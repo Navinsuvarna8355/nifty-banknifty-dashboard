@@ -5,11 +5,15 @@ import requests
 import json
 import pandas as pd
 import altair as alt
+from streamlit_autorefresh import st_autorefresh
 
 # ------------------ CONFIG ------------------
-st.set_page_config(page_title="NIFTY OI Dashboard", layout="wide")
+st.set_page_config(page_title="📈 NIFTY OI Dashboard", layout="wide")
 st.title("📈 NIFTY Option Chain Open Interest")
 st.caption("Live CE/PE OI for nearest expiry | Auto-refresh every 60s")
+
+# ------------------ AUTO REFRESH ------------------
+st_autorefresh(interval=60 * 1000, limit=None, key="dashboard_refresh")
 
 # ------------------ HEADERS ------------------
 HEADERS = {
@@ -68,8 +72,4 @@ else:
     pe_chart = base.mark_bar(color="#ff7f0e").encode(y="Put OI:Q")
 
     st.altair_chart(ce_chart + pe_chart, use_container_width=True)
-
     st.dataframe(df_oi, use_container_width=True)
-
-# ------------------ AUTO REFRESH ------------------
-st.experimental_rerun()  # Optional: use with st_autorefresh if needed
