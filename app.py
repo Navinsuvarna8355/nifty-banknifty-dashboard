@@ -1,52 +1,75 @@
+# app.py
+
 import streamlit as st
-from nsepython import nse_fno
-import plotly.graph_objects as go
-from streamlit_autorefresh import st_autorefresh
+import requests
+import json
+import pandas as pd
+import altair as alt
 
 # ------------------ CONFIG ------------------
-st.set_page_config(page_title="📈 NIFTY Dashboard", layout="wide")
-st.title("📈 NIFTY Futures Dashboard")
-st.caption("Live price tracking with auto-refresh")
+st.set_page_config(page_title="NIFTY OI Dashboard", layout="wide")
+st.title("📈 NIFTY Option Chain Open Interest")
+st.caption("Live CE/PE OI for nearest expiry | Auto-refresh every 60s")
 
-# ------------------ AUTO-REFRESH ------------------
-st_autorefresh(interval=60 * 1000, limit=100, key="refresh")
+# ------------------ HEADERS ------------------
+HEADERS = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Referer": "https://www.nseindia.com"
+}
 
-# ------------------ FUNCTION ------------------
-def get_futures_price(symbol):
-    """
-    Fetches the latest futures price for a given symbol (e.g., 'NIFTY', 'BANKNIFTY').
-    Returns float or None.
-    """
+# ------------------ FETCH FUNCTION ------------------
+@st.cache_data(ttl=60)
+def fetch_option_chain(symbol="NIFTY"):
+    url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
+    session = requests.Session()
     try:
-        fut_data = nse_fno(symbol)
-        if "data" in fut_data and isinstance(fut_data["data"], list) and len(fut_data["data"]) > 0:
-            return float(fut_data["data"][0].get("lastPrice", 0))
-        else:
-            st.warning(f"⚠️ No futures data found for {symbol}")
-            return None
+        session.get("https://www.nseindia.com/option-chain", headers=HEADERS)
+        response = session.get(url, headers=HEADERS)
+        data = json.loads(response.text)
+        return data
     except Exception as e:
-        st.error(f"❌ Error fetching futures price for {symbol}: {e}")
+        st.error(f"❌ Failed to fetch option chain: {e}")
         return None
 
-def plot_futures_price(price, symbol):
-    """
-    Displays the futures price using a Plotly indicator chart.
-    """
-    fig = go.Figure()
-    fig.add_trace(go.Indicator(
-        mode="number",
-        value=price,
-        title={"text": f"{symbol} Futures"},
-        number={"prefix": "₹"}
-    ))
-    fig.update_layout(height=200, margin=dict(t=30, b=0))
-    st.plotly_chart(fig, use_container_width=True)
+# ------------------ PARSE FUNCTION ------------------
+def extract_oi_by_expiry(data):
+    if not data:
+        return pd.DataFrame()
+
+    expiry_dates = data.get("records", {}).get("expiryDates", [])
+    if not expiry_dates:
+        return pd.DataFrame()
+
+    current_expiry = expiry_dates[0]
+    rows = []
+
+    for item in data["records"]["data"]:
+        if item.get("expiryDate") == current_expiry:
+            strike = item.get("strikePrice")
+            ce_oi = item.get("CE", {}).get("openInterest", 0)
+            pe_oi = item.get("PE", {}).get("openInterest", 0)
+            rows.append({"Strike": strike, "Call OI": ce_oi, "Put OI": pe_oi})
+
+    df = pd.DataFrame(rows).sort_values("Strike")
+    return df
 
 # ------------------ MAIN ------------------
-symbol = "NIFTY"
-price = get_futures_price(symbol)
+data = fetch_option_chain("NIFTY")
+df_oi = extract_oi_by_expiry(data)
 
-if price:
-    plot_futures_price(price, symbol)
+if df_oi.empty:
+    st.warning("⚠️ No option chain data available.")
 else:
-    st.text("Futures price unavailable.")
+    st.subheader("🔍 CE vs PE Open Interest")
+    base = alt.Chart(df_oi).encode(x="Strike:O")
+
+    ce_chart = base.mark_bar(color="#1f77b4").encode(y="Call OI:Q")
+    pe_chart = base.mark_bar(color="#ff7f0e").encode(y="Put OI:Q")
+
+    st.altair_chart(ce_chart + pe_chart, use_container_width=True)
+
+    st.dataframe(df_oi, use_container_width=True)
+
+# ------------------ AUTO REFRESH ------------------
+st.experimental_rerun()  # Optional: use with st_autorefresh if needed
