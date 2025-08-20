@@ -2,12 +2,10 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 from nsepython import nse_optionchain_scrapper, nse_fno
-from streamlit_autorefresh import st_autorefresh
 
-# 🔁 Auto-refresh every 5 minutes
-st_autorefresh(interval=5 * 60 * 1000, limit=100, key="refresh")
+st.set_page_config(layout="wide")
 
-# 📦 Extract strike-wise CE/PE OI
+# 📦 Get CE/PE OI strike-wise
 def get_option_oi(symbol):
     data = nse_optionchain_scrapper(symbol)
     expiry = data["records"]["expiryDates"][0]
@@ -50,21 +48,10 @@ def plot_futures_line(price, title):
     ax.set_ylabel("Price")
     st.pyplot(fig)
 
-# 🖥️ Layout
-col1, col2 = st.columns(2)
-
-with col1:
-    st.subheader("📈 NIFTY")
-    nifty_df, nifty_expiry = get_option_oi("NIFTY")
-    nifty_price = get_futures_price("NIFTY")
-    st.text(f"Expiry: {nifty_expiry}")
-    plot_oi_bar(nifty_df, "NIFTY")
-    plot_futures_line(nifty_price, "NIFTY")
-
-with col2:
-    st.subheader("📉 BANKNIFTY")
-    bank_df, bank_expiry = get_option_oi("BANKNIFTY")
-    bank_price = get_futures_price("BANKNIFTY")
-    st.text(f"Expiry: {bank_expiry}")
-    plot_oi_bar(bank_df, "BANKNIFTY")
-    plot_futures_line(bank_price, "BANKNIFTY")
+# 🖥️ NIFTY Dashboard
+st.title("📈 NIFTY Dashboard")
+df, expiry = get_option_oi("NIFTY")
+price = get_futures_price("NIFTY")
+st.text(f"Expiry: {expiry}")
+plot_oi_bar(df, "NIFTY")
+plot_futures_line(price, "NIFTY")

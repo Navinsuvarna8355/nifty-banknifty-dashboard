@@ -2,4 +2,3 @@ streamlit
 pandas
 matplotlib
 nsepython
-streamlit-autorefresh
