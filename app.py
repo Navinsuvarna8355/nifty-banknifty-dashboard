@@ -56,6 +56,9 @@ def get_ema_signal(prices):
         return "BEARISH"
     else:
         return "NEUTRAL"
+nifty_strategy = get_strategy(nifty_pcr, nifty_ema_signal)
+banknifty_strategy = get_strategy(banknifty_pcr, banknifty_ema_signal)
+
 
 # Strategy logic
 def get_strategy(pcr, ema_signal):
