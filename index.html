@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>NSE OI • PCR • S/R (Live)</title>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <div class="wrap">
+    <h1>NSE OI • PCR • Supports/Resistances (Live)</h1>
+    <div class="controls">
+      <label>Symbol</label>
+      <select id="symbol">
+        <option>BANKNIFTY</option>
+        <option>NIFTY</option>
+      </select>
+      <button id="refresh">Refresh</button>
+      <span id="status"></span>
+    </div>
+    <div id="summary" class="card"></div>
+    <div class="grid">
+      <div class="card">
+        <h3>Supports (Top Put OI)</h3>
+        <ul id="supports"></ul>
+      </div>
+      <div class="card">
+        <h3>Resistances (Top Call OI)</h3>
+        <ul id="resistances"></ul>
+      </div>
+    </div>
+    <div class="card">
+      <h3>Strikes near ATM</h3>
+      <table id="tbl">
+        <thead><tr><th>Strike</th><th>Call OI</th><th>Put OI</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
