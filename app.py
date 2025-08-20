@@ -7,7 +7,7 @@ import altair as alt
 # ------------------ CONFIG ------------------
 st.set_page_config(page_title="📊 NIFTY/BANKNIFTY Dashboard", layout="wide")
 st.title("📊 NIFTY & BANKNIFTY Dashboard")
-st.caption("Live Spot Prices + NIFTY Option Chain OI + Strategy Insights")
+st.caption("Live Spot Prices + Strategy Insights + Option Chain OI")
 
 # ------------------ HEADERS ------------------
 HEADERS = {
@@ -76,17 +76,28 @@ def generate_strategy(df):
     else:
         return f"⚖️ Neutral Bias: Max OI at same strike {ce_strike}. Consider Iron Condor or Straddle."
 
-# ------------------ DISPLAY PRICES ------------------
+# ------------------ DISPLAY PRICES + STRATEGY INSIGHTS ------------------
 nifty_price = fetch_spot_price("NIFTY")
 banknifty_price = fetch_spot_price("BANKNIFTY")
 
 col1, col2 = st.columns(2)
 with col1:
     st.metric("📈 NIFTY", f"{nifty_price:.2f}" if nifty_price else "N/A")
+    st.markdown("### 📌 NIFTY Strategy Insights")
+    st.write("**Expiry:** 21-Aug-2025")
+    st.write("**PCR:** 1.35")
+    st.write("**EMA Signal:** BEARISH")
+    st.write("**Strategy:** SIDEWAYS 📉")
+
 with col2:
     st.metric("🏦 BANKNIFTY", f"{banknifty_price:.2f}" if banknifty_price else "N/A")
+    st.markdown("### 📌 BANKNIFTY Strategy Insights")
+    st.write("**Expiry:** 28-Aug-2025")
+    st.write("**PCR:** 0.71")
+    st.write("**EMA Signal:** BEARISH")
+    st.write("**Strategy:** BUY PE")
 
-# ------------------ DISPLAY OI ------------------
+# ------------------ DISPLAY OI CHART ------------------
 data = fetch_option_chain("NIFTY")
 df_oi = extract_oi_by_expiry(data)
 
@@ -106,35 +117,6 @@ else:
     st.subheader("🧠 Strategy Suggestion")
     strategy_text = generate_strategy(df_oi)
     st.info(strategy_text)
-
-# ------------------ CUSTOM STRATEGY INSIGHTS ------------------
-st.subheader("📌 Strategy Insights")
-
-nifty_expiry = "21-Aug-2025"
-nifty_pcr = 1.35
-nifty_ema_signal = "BEARISH"
-nifty_strategy = "SIDEWAYS 📉"
-
-banknifty_expiry = "28-Aug-2025"
-banknifty_pcr = 0.71
-banknifty_ema_signal = "BEARISH"
-banknifty_strategy = "BUY PE"
-
-col1, col2 = st.columns(2)
-
-with col1:
-    st.markdown("### 📈 NIFTY")
-    st.write(f"**Expiry:** {nifty_expiry}")
-    st.write(f"**PCR:** {nifty_pcr}")
-    st.write(f"**EMA Signal:** {nifty_ema_signal}")
-    st.write(f"**Strategy:** {nifty_strategy}")
-
-with col2:
-    st.markdown("### 🏦 BANKNIFTY")
-    st.write(f"**Expiry:** {banknifty_expiry}")
-    st.write(f"**PCR:** {banknifty_pcr}")
-    st.write(f"**EMA Signal:** {banknifty_ema_signal}")
-    st.write(f"**Strategy:** {banknifty_strategy}")
 
 # ------------------ MANUAL REFRESH ------------------
 st.button("🔄 Refresh Now")
