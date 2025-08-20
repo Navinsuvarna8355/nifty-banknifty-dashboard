@@ -73,8 +73,6 @@ col1, col2 = st.columns(2)
 with col1:
     st.header("📈 NIFTY Dashboard")
     nifty_data = nse_optionchain_scrapper("NIFTY")
-    nifty_strategy = get_strategy(nifty_pcr, nifty_ema_signal)
-    banknifty_strategy = get_strategy(banknifty_pcr, banknifty_ema_signal)
     nifty_pcr, nifty_expiry = extract_pcr(nifty_data)
     nifty_prices = [25050, 25080, 25110, 25140, 25100, 25090, 25068]  # Replace with live feed
     nifty_ema_signal = get_ema_signal(nifty_prices)
@@ -95,3 +93,4 @@ with col2:
     st.metric("PCR", round(bank_pcr, 2))
     st.metric("EMA Signal", bank_ema_signal)
     st.metric("Strategy", bank_strategy)
+
