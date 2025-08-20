@@ -25,20 +25,14 @@ def fetch_spot_price(symbol):
         session.get("https://www.nseindia.com", headers=HEADERS)
         response = session.get(url, headers=HEADERS)
         data = json.loads(response.text)
-        return float(data["priceInfo"]["lastPrice"])
-    except:
-        return None
-
-@st.cache_data(ttl=60)
-def fetch_futures_price(symbol):
-    url = f"https://www.nseindia.com/api/quote-derivative?symbol={symbol}"
-    session = requests.Session()
-    try:
-        session.get("https://www.nseindia.com", headers=HEADERS)
-        response = session.get(url, headers=HEADERS)
-        data = json.loads(response.text)
-        return float(data["priceInfo"]["lastPrice"])
-    except:
+        price = data.get("priceInfo", {}).get("lastPrice")
+        if price:
+            return float(price)
+        else:
+            st.warning(f"⚠️ Spot price not found for {symbol}")
+            return None
+    except Exception as e:
+        st.error(f"❌ Error fetching spot price for {symbol}: {e}")
         return None
 
 # ------------------ OPTION CHAIN ------------------
@@ -94,8 +88,8 @@ def generate_strategy(df):
         return f"⚖️ Neutral Bias: Max OI at same strike {ce_strike}. Consider Iron Condor or Straddle."
 
 # ------------------ DISPLAY PRICES ------------------
-nifty_price = fetch_futures_price("NIFTY") or fetch_spot_price("NIFTY")
-banknifty_price = fetch_futures_price("BANKNIFTY") or fetch_spot_price("BANKNIFTY")
+nifty_price = fetch_spot_price("NIFTY")
+banknifty_price = fetch_spot_price("BANKNIFTY")
 
 col1, col2 = st.columns(2)
 with col1:
@@ -113,8 +107,8 @@ else:
     st.subheader("🔍 CE vs PE Open Interest")
     base = alt.Chart(df_oi).encode(x="Strike:O")
 
-    ce_chart = base.mark_bar(color="#ff7f0e").encode(y="Call OI:Q")
-    pe_chart = base.mark_bar(color="#1f77b4").encode(y="Put OI:Q")
+    ce_chart = base.mark_bar(color="#1f77b4").encode(y="Call OI:Q")
+    pe_chart = base.mark_bar(color="#ff7f0e").encode(y="Put OI:Q")
 
     st.altair_chart(ce_chart + pe_chart, use_container_width=True)
     st.dataframe(df_oi, use_container_width=True)
