@@ -1,50 +1,52 @@
 import streamlit as st
-import pandas as pd
-import time
 from nsepython import nse_fno
 import plotly.graph_objects as go
+from streamlit_autorefresh import st_autorefresh
 
 # ------------------ CONFIG ------------------
 st.set_page_config(page_title="📈 NIFTY Dashboard", layout="wide")
 st.title("📈 NIFTY Futures Dashboard")
 st.caption("Live price tracking with auto-refresh")
 
+# ------------------ AUTO-REFRESH ------------------
+st_autorefresh(interval=60 * 1000, limit=100, key="refresh")
+
 # ------------------ FUNCTION ------------------
 def get_futures_price(symbol):
+    """
+    Fetches the latest futures price for a given symbol (e.g., 'NIFTY', 'BANKNIFTY').
+    Returns float or None.
+    """
     try:
         fut_data = nse_fno(symbol)
         if "data" in fut_data and isinstance(fut_data["data"], list) and len(fut_data["data"]) > 0:
             return float(fut_data["data"][0].get("lastPrice", 0))
         else:
-            st.warning(f"⚠️ Futures data not available for {symbol}.")
+            st.warning(f"⚠️ No futures data found for {symbol}")
             return None
     except Exception as e:
         st.error(f"❌ Error fetching futures price for {symbol}: {e}")
         return None
 
-def plot_futures_line(price, symbol):
+def plot_futures_price(price, symbol):
+    """
+    Displays the futures price using a Plotly indicator chart.
+    """
     fig = go.Figure()
     fig.add_trace(go.Indicator(
-        mode="number+delta",
+        mode="number",
         value=price,
-        title={"text": f"{symbol} Futures Price"},
-        number={"prefix": "₹"},
-        delta={"reference": price, "relative": False}
+        title={"text": f"{symbol} Futures"},
+        number={"prefix": "₹"}
     ))
-    fig.update_layout(height=200)
+    fig.update_layout(height=200, margin=dict(t=30, b=0))
     st.plotly_chart(fig, use_container_width=True)
 
 # ------------------ MAIN ------------------
-refresh_interval = 60  # seconds
-placeholder = st.empty()
+symbol = "NIFTY"
+price = get_futures_price(symbol)
 
-while True:
-    with placeholder.container():
-        st.subheader("🔄 Auto-refreshing every 60 seconds")
-        price = get_futures_price("NIFTY")
-        if price:
-            plot_futures_line(price, "NIFTY")
-        else:
-            st.text("Futures price unavailable.")
-        st.markdown("---")
-    time.sleep(refresh_interval)
+if price:
+    plot_futures_price(price, symbol)
+else:
+    st.text("Futures price unavailable.")
