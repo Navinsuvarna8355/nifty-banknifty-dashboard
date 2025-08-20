@@ -2,13 +2,9 @@ from nsepython import *
 import streamlit as st
 import pandas as pd
 import time
-
 REFRESH_INTERVAL = 60  # seconds
 time.sleep(REFRESH_INTERVAL)
 st.experimental_rerun()
-
-
-
 def get_strategy(pcr: float, ema_signal: str) -> str:
     """
     Returns trading strategy based on PCR and EMA signal.
@@ -100,6 +96,7 @@ with col2:
     st.metric("PCR", round(bank_pcr, 2))
     st.metric("EMA Signal", bank_ema_signal)
     st.metric("Strategy", bank_strategy)
+
 
 
 
