@@ -1,8 +1,12 @@
 from nsepython import *
 import streamlit as st
 import pandas as pd
-st.experimental_set_query_params(refresh=True)
+import time
+
+REFRESH_INTERVAL = 60  # seconds
+time.sleep(REFRESH_INTERVAL)
 st.experimental_rerun()
+
 
 
 def get_strategy(pcr: float, ema_signal: str) -> str:
@@ -96,5 +100,6 @@ with col2:
     st.metric("PCR", round(bank_pcr, 2))
     st.metric("EMA Signal", bank_ema_signal)
     st.metric("Strategy", bank_strategy)
+
 
 
