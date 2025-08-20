@@ -3,22 +3,11 @@ import requests
 import json
 import pandas as pd
 import altair as alt
-import time
 
 # ------------------ CONFIG ------------------
 st.set_page_config(page_title="📈 NIFTY OI Dashboard", layout="wide")
 st.title("📈 NIFTY Option Chain Open Interest")
-st.caption("Live CE/PE OI for nearest expiry | Auto-refresh every 60s")
-
-# ------------------ AUTO REFRESH ------------------
-query_params = st.experimental_get_query_params()
-if "refresh" not in query_params:
-    st.experimental_set_query_params(refresh="true")
-    st.experimental_rerun()
-else:
-    time.sleep(60)
-    st.experimental_set_query_params()
-    st.experimental_rerun()
+st.caption("Live CE/PE OI for nearest expiry")
 
 # ------------------ HEADERS ------------------
 HEADERS = {
@@ -78,3 +67,6 @@ else:
 
     st.altair_chart(ce_chart + pe_chart, use_container_width=True)
     st.dataframe(df_oi, use_container_width=True)
+
+# ------------------ MANUAL REFRESH ------------------
+st.button("🔄 Refresh Now")
