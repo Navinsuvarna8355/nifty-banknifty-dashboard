@@ -7,7 +7,7 @@ import altair as alt
 # ------------------ CONFIG ------------------
 st.set_page_config(page_title="📊 NIFTY/BANKNIFTY Dashboard", layout="wide")
 st.title("📊 NIFTY & BANKNIFTY Dashboard")
-st.caption("Live Spot Prices + NIFTY Option Chain OI")
+st.caption("Live Spot Prices + NIFTY Option Chain OI + Strategy Suggestion")
 
 # ------------------ HEADERS ------------------
 HEADERS = {
@@ -76,6 +76,23 @@ def extract_oi_by_expiry(data):
     df = pd.DataFrame(rows).sort_values("Strike")
     return df
 
+# ------------------ STRATEGY LOGIC ------------------
+def generate_strategy(df):
+    if df.empty:
+        return "⚠️ No data to generate strategy."
+
+    max_ce = df.loc[df["Call OI"].idxmax()]
+    max_pe = df.loc[df["Put OI"].idxmax()]
+    ce_strike = max_ce["Strike"]
+    pe_strike = max_pe["Strike"]
+
+    if ce_strike > pe_strike:
+        return f"🔺 Bullish Bias: Max CE OI at {ce_strike}, Max PE OI at {pe_strike}. Consider Bull Call Spread."
+    elif pe_strike > ce_strike:
+        return f"🔻 Bearish Bias: Max PE OI at {pe_strike}, Max CE OI at {ce_strike}. Consider Bear Put Spread."
+    else:
+        return f"⚖️ Neutral Bias: Max OI at same strike {ce_strike}. Consider Iron Condor or Straddle."
+
 # ------------------ DISPLAY PRICES ------------------
 nifty_price = fetch_futures_price("NIFTY") or fetch_spot_price("NIFTY")
 banknifty_price = fetch_futures_price("BANKNIFTY") or fetch_spot_price("BANKNIFTY")
@@ -101,6 +118,11 @@ else:
 
     st.altair_chart(ce_chart + pe_chart, use_container_width=True)
     st.dataframe(df_oi, use_container_width=True)
+
+    # ------------------ DISPLAY STRATEGY ------------------
+    st.subheader("🧠 Strategy Suggestion")
+    strategy_text = generate_strategy(df_oi)
+    st.info(strategy_text)
 
 # ------------------ MANUAL REFRESH ------------------
 st.button("🔄 Refresh Now")
