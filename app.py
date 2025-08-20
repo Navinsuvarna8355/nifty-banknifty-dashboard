@@ -2,6 +2,33 @@ from nsepython import *
 import streamlit as st
 import pandas as pd
 
+def get_strategy(pcr: float, ema_signal: str) -> str:
+    """
+    Returns trading strategy based on PCR and EMA signal.
+
+    Parameters:
+    - pcr (float): Put-Call Ratio
+    - ema_signal (str): 'BULLISH', 'BEARISH', or 'NEUTRAL'
+
+    Returns:
+    - str: Strategy recommendation ('BUY CE', 'BUY PE', 'SIDEWAYS')
+    """
+    ema_signal = ema_signal.upper()
+
+    if ema_signal == "BULLISH":
+        if pcr > 1.0:
+            return "BUY CE"
+        else:
+            return "SIDEWAYS"
+    elif ema_signal == "BEARISH":
+        if pcr < 1.0:
+            return "BUY PE"
+        else:
+            return "SIDEWAYS"
+    else:
+        return "SIDEWAYS"
+
+
 # Function to extract PCR
 def extract_pcr(data):
     ce_oi = []
