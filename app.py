@@ -1,91 +1,70 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-from streamlit_autorefresh import st_autorefresh
 from nsepython import nse_optionchain_scrapper, nse_fno
-import datetime
+from streamlit_autorefresh import st_autorefresh
 
 # 🔁 Auto-refresh every 5 minutes
 st_autorefresh(interval=5 * 60 * 1000, limit=100, key="refresh")
 
-# 🧠 Session state to store time-series data
-if "nifty_df" not in st.session_state:
-    st.session_state.nifty_df = pd.DataFrame(columns=["time", "CE_OI", "PE_OI", "Fut_Price"])
-if "bank_df" not in st.session_state:
-    st.session_state.bank_df = pd.DataFrame(columns=["time", "CE_OI", "PE_OI", "Fut_Price"])
-
-# 📦 Extract CE/PE OI and Futures price
-def extract_data(symbol):
+# 📦 Extract strike-wise CE/PE OI
+def get_option_oi(symbol):
     data = nse_optionchain_scrapper(symbol)
     expiry = data["records"]["expiryDates"][0]
-    ce_oi = 0
-    pe_oi = 0
+    strikes = []
+    ce_oi = []
+    pe_oi = []
     for item in data["records"]["data"]:
         if item["expiryDate"] == expiry:
-            ce_oi += item.get("CE", {}).get("openInterest", 0)
-            pe_oi += item.get("PE", {}).get("openInterest", 0)
+            strike = item["strikePrice"]
+            ce = item.get("CE", {}).get("openInterest", 0)
+            pe = item.get("PE", {}).get("openInterest", 0)
+            strikes.append(strike)
+            ce_oi.append(ce)
+            pe_oi.append(pe)
+    df = pd.DataFrame({"Strike": strikes, "CE_OI": ce_oi, "PE_OI": pe_oi})
+    df = df.sort_values("Strike")
+    return df, expiry
+
+# 📈 Get Futures price
+def get_futures_price(symbol):
     fut_data = nse_fno(symbol)
-    fut_price = float(fut_data["data"][0]["lastPrice"])
-    return ce_oi, pe_oi, fut_price
+    return float(fut_data["data"][0]["lastPrice"])
 
-# 📊 Bar chart for OI change
-def plot_oi_change_bar(ce_change, pe_change, title):
-    fig, ax = plt.subplots()
-    ax.bar(["CALL", "PUT"], [ce_change, pe_change], color=["blue", "red"])
-    ax.set_title(f"{title} Change in OI")
+# 📊 Plot CE/PE OI bar chart
+def plot_oi_bar(df, title):
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.bar(df["Strike"] - 10, df["CE_OI"], width=20, label="CE", color="blue", alpha=0.6)
+    ax.bar(df["Strike"] + 10, df["PE_OI"], width=20, label="PE", color="red", alpha=0.6)
+    ax.set_xlabel("Strike Price")
+    ax.set_ylabel("Open Interest")
+    ax.set_title(f"{title} CE/PE OI")
+    ax.legend()
     st.pyplot(fig)
 
-# 📈 Line chart for CE/PE OI and Futures
-def plot_oi_time_series(df, title):
-    fig, ax1 = plt.subplots()
-    ax1.plot(df["time"], df["CE_OI"], label="CE", color="teal")
-    ax1.plot(df["time"], df["PE_OI"], label="PE", color="red")
-    ax1.set_ylabel("OI")
-    ax1.tick_params(axis='x', rotation=45)
-
-    ax2 = ax1.twinx()
-    ax2.plot(df["time"], df["Fut_Price"], label="Future", color="black", linestyle="dotted")
-    ax2.set_ylabel("Futures Price")
-
-    fig.legend(loc="upper left")
-    ax1.set_title(f"{title} OI & Futures")
+# 📈 Plot Futures price line chart
+def plot_futures_line(price, title):
+    fig, ax = plt.subplots(figsize=(6, 2))
+    ax.plot([price], marker='o', color='black')
+    ax.set_title(f"{title} Futures Price")
+    ax.set_ylabel("Price")
     st.pyplot(fig)
 
-# 🕒 Current time label
-def get_time_label():
-    now = datetime.datetime.now()
-    return now.strftime("%H:%M")
+# 🖥️ Layout
+col1, col2 = st.columns(2)
 
-# 📈 NIFTY Panel
-with st.container():
-    st.subheader("📈 NIFTY Dashboard")
-    ce_oi, pe_oi, fut_price = extract_data("NIFTY")
-    time_label = get_time_label()
-    st.session_state.nifty_df.loc[len(st.session_state.nifty_df)] = [time_label, ce_oi, pe_oi, fut_price]
+with col1:
+    st.subheader("📈 NIFTY")
+    nifty_df, nifty_expiry = get_option_oi("NIFTY")
+    nifty_price = get_futures_price("NIFTY")
+    st.text(f"Expiry: {nifty_expiry}")
+    plot_oi_bar(nifty_df, "NIFTY")
+    plot_futures_line(nifty_price, "NIFTY")
 
-    if len(st.session_state.nifty_df) > 1:
-        prev = st.session_state.nifty_df.iloc[-2]
-        ce_change = ce_oi - prev["CE_OI"]
-        pe_change = pe_oi - prev["PE_OI"]
-    else:
-        ce_change = pe_change = 0
-
-    plot_oi_change_bar(ce_change, pe_change, "NIFTY")
-    plot_oi_time_series(st.session_state.nifty_df, "NIFTY")
-
-# 📉 BANKNIFTY Panel
-with st.container():
-    st.subheader("📉 BANKNIFTY Dashboard")
-    ce_oi, pe_oi, fut_price = extract_data("BANKNIFTY")
-    time_label = get_time_label()
-    st.session_state.bank_df.loc[len(st.session_state.bank_df)] = [time_label, ce_oi, pe_oi, fut_price]
-
-    if len(st.session_state.bank_df) > 1:
-        prev = st.session_state.bank_df.iloc[-2]
-        ce_change = ce_oi - prev["CE_OI"]
-        pe_change = pe_oi - prev["PE_OI"]
-    else:
-        ce_change = pe_change = 0
-
-    plot_oi_change_bar(ce_change, pe_change, "BANKNIFTY")
-    plot_oi_time_series(st.session_state.bank_df, "BANKNIFTY")
+with col2:
+    st.subheader("📉 BANKNIFTY")
+    bank_df, bank_expiry = get_option_oi("BANKNIFTY")
+    bank_price = get_futures_price("BANKNIFTY")
+    st.text(f"Expiry: {bank_expiry}")
+    plot_oi_bar(bank_df, "BANKNIFTY")
+    plot_futures_line(bank_price, "BANKNIFTY")
