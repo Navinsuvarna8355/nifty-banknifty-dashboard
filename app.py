@@ -56,9 +56,6 @@ def get_ema_signal(prices):
         return "BEARISH"
     else:
         return "NEUTRAL"
-nifty_strategy = get_strategy(nifty_pcr, nifty_ema_signal)
-banknifty_strategy = get_strategy(banknifty_pcr, banknifty_ema_signal)
-
 
 # Strategy logic
 def get_strategy(pcr, ema_signal):
@@ -76,6 +73,8 @@ col1, col2 = st.columns(2)
 with col1:
     st.header("📈 NIFTY Dashboard")
     nifty_data = nse_optionchain_scrapper("NIFTY")
+    nifty_strategy = get_strategy(nifty_pcr, nifty_ema_signal)
+    banknifty_strategy = get_strategy(banknifty_pcr, banknifty_ema_signal)
     nifty_pcr, nifty_expiry = extract_pcr(nifty_data)
     nifty_prices = [25050, 25080, 25110, 25140, 25100, 25090, 25068]  # Replace with live feed
     nifty_ema_signal = get_ema_signal(nifty_prices)
