@@ -16,26 +16,7 @@ HEADERS = {
     "Referer": "https://www.nseindia.com"
 }
 
-# ------------------ PRICE FETCHERS ------------------
-@st.cache_data(ttl=60)
-def fetch_spot_price(symbol):
-    url = f"https://www.nseindia.com/api/quote-equity?symbol={symbol}"
-    session = requests.Session()
-    try:
-        session.get("https://www.nseindia.com", headers=HEADERS)
-        response = session.get(url, headers=HEADERS)
-        data = json.loads(response.text)
-        price = data.get("priceInfo", {}).get("lastPrice")
-        if price:
-            return float(price)
-        else:
-            st.warning(f"⚠️ Spot price not found for {symbol}")
-            return None
-    except Exception as e:
-        st.error(f"❌ Error fetching spot price for {symbol}: {e}")
-        return None
-
-# ------------------ OPTION CHAIN ------------------
+# ------------------ OPTION CHAIN FETCHER ------------------
 @st.cache_data(ttl=60)
 def fetch_option_chain(symbol="NIFTY"):
     url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
@@ -46,9 +27,17 @@ def fetch_option_chain(symbol="NIFTY"):
         data = json.loads(response.text)
         return data
     except Exception as e:
-        st.error(f"❌ Failed to fetch option chain: {e}")
+        st.error(f"❌ Failed to fetch option chain for {symbol}: {e}")
         return None
 
+# ------------------ SPOT PRICE FROM OPTION CHAIN ------------------
+def fetch_spot_price(symbol):
+    data = fetch_option_chain(symbol)
+    if data:
+        return data.get("records", {}).get("underlyingValue")
+    return None
+
+# ------------------ OI DATA EXTRACTOR ------------------
 def extract_oi_by_expiry(data):
     if not data:
         return pd.DataFrame()
