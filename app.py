@@ -204,7 +204,45 @@ fig.add_trace(go.Scatter(
     line=dict(color="red", width=2)
 ))
 fig.add_trace(go.Scatter(
+    fig = go.Figure()
+fig.add_trace(go.Scatter(
+    x=df_intraday["Time"], y=df_intraday["CE_OI"],
+    mode="lines+markers", name="CE",
+    line=dict(color="blue", width=2)
+))
+fig.add_trace(go.Scatter(
+    x=df_intraday["Time"], y=df_intraday["PE_OI"],
+    mode="lines+markers", name="PE",
+    line=dict(color="red", width=2)
+))
+fig.add_trace(go.Scatter(
+    x=df_intraday["Time"], y=df_intraday["Futures"],
+    mode="lines", name="Futures",
+    line=dict(color="black", dash="dot"),
+    yaxis="y2"
+))
+
+fig.update_layout(
+    template="plotly_dark",
+    title="Change in OI vs Time",
+    xaxis_title="Time",
+    yaxis=dict(title="OI (Contracts)", side="left"),
+    yaxis2=dict(
+        title="Futures Price",
+        overlaying="y",
+        side="right",
+        range=[spot_price - 100, spot_price + 100],
+        showgrid=False
+    ),
+    legend=dict(x=0.01, y=0.99),
+    height=600,
+    margin=dict(l=50, r=50, t=50, b=50)
+)
+
+st.plotly_chart(fig, use_container_width=True)
+
     x=df_intraday["Time"], y=df_intraday["Futures"],
     mode="lines", name="Futures",
     line=dict(color="black", dash="dot"),
     yaxis="
+
