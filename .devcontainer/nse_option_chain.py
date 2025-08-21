@@ -1,8 +1,6 @@
 import pandas as pd
 
 def fetch_live_chart_data(index_name):
-    # Replace with actual API or CSV fetch
-    def fetch_live_chart_data(index_name):
     # Dummy live data for testing without CSV
     if index_name == "NIFTY":
         data = {
@@ -25,11 +23,12 @@ def fetch_live_chart_data(index_name):
 
     return pd.DataFrame(data)
 
-
 def get_option_price(index_name, strike, option_type):
-    df = pd.read_csv(f"{index_name.lower()}_option_chain.csv")
-    row = df[(df['strikePrice'] == strike) & (df['type'] == option_type)]
-    if not row.empty:
-        return float(row['lastPrice'].values[0])
+    try:
+        df = pd.read_csv(f"{index_name.lower()}_option_chain.csv")
+        row = df[(df['strikePrice'] == strike) & (df['type'] == option_type)]
+        if not row.empty:
+            return float(row['lastPrice'].values[0])
+    except FileNotFoundError:
+        return None
     return None
-
