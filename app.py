@@ -1,7 +1,13 @@
-import requests, json, time
+import requests
 import pandas as pd
+import time
 from datetime import datetime
+import logging
 
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+
+# NSE headers to mimic browser
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept": "*/*",
@@ -10,17 +16,28 @@ HEADERS = {
     "Connection": "keep-alive"
 }
 
-def fetch_option_chain(symbol):
+def fetch_option_chain(symbol: str = "NIFTY") -> tuple[pd.DataFrame, str, float]:
+    """
+    Fetches option chain data from NSE for the given symbol.
+    Returns:
+        - DataFrame with strike, CE OI, PE OI
+        - Nearest expiry date
+        - Underlying index value
+    """
     session = requests.Session()
     try:
+        # Warm-up request to set cookies
         session.get("https://www.nseindia.com", headers=HEADERS, timeout=5)
         time.sleep(1)
 
         url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
         response = session.get(url, headers=HEADERS, timeout=5)
+        response.raise_for_status()
         data = response.json()
 
         expiry = data["records"]["expiryDates"][0]
+        underlying = data["records"].get("underlyingValue", 0.0)
+
         strikes, ce_oi, pe_oi = [], [], []
 
         for item in data["records"]["data"]:
@@ -38,20 +55,29 @@ def fetch_option_chain(symbol):
             "Put_OI": pe_oi
         })
 
-        fut_price = round(sum(strikes) / len(strikes), 2)
-        df["Futures"] = fut_price
+        df["Timestamp"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        df["Underlying"] = underlying
 
-        return df, expiry, fut_price
+        logging.info(f"Fetched {len(df)} rows for {symbol} - Expiry: {expiry}")
+        return df, expiry, underlying
 
     except Exception as e:
-        return pd.DataFrame(), "—", 0
+        logging.error(f"Error fetching option chain for {symbol}: {e}")
+        return pd.DataFrame(), "—", 0.0
 
-def derive_strategy(df):
+def derive_strategy(df: pd.DataFrame) -> str:
+    """
+    Derives market sentiment based on open interest.
+    Returns:
+        - "Bullish", "Bearish", or "Neutral"
+    """
     if df.empty:
         return "No Data"
 
     total_ce = df["Call_OI"].sum()
     total_pe = df["Put_OI"].sum()
+
+    logging.info(f"Total CE OI: {total_ce}, Total PE OI: {total_pe}")
 
     if total_pe > total_ce * 1.2:
         return "Bullish"
@@ -59,3 +85,16 @@ def derive_strategy(df):
         return "Bearish"
     else:
         return "Neutral"
+
+# Optional: Run as script
+if __name__ == "__main__":
+    symbol = "BANKNIFTY"  # You can change this to "NIFTY" or others
+    df, expiry, underlying = fetch_option_chain(symbol)
+    strategy = derive_strategy(df)
+
+    print(f"\nSymbol: {symbol}")
+    print(f"Expiry Date: {expiry}")
+    print(f"Underlying Index Value: {underlying}")
+    print(f"Market Sentiment: {strategy}")
+    print("\nOption Chain Snapshot:")
+    print(df.head())
