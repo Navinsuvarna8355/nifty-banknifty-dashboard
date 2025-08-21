@@ -1,23 +1,11 @@
 import streamlit as st
-import pandas as pd
 import plotly.graph_objects as go
-from signal_strategy import get_signals
 from nse_option_chain import fetch_live_chart_data
 
 st.set_page_config(layout="wide")
-st.title("📊 NIFTY & BANKNIFTY Signal Dashboard")
+st.title("📈 NIFTY & BANKNIFTY Signal Dashboard")
 
-col1, col2 = st.columns(2)
-
-# Load live chart data
-nifty_data = fetch_live_chart_data("NIFTY")
-banknifty_data = fetch_live_chart_data("BANKNIFTY")
-
-# Get signals
-nifty_signal = get_signals(nifty_data, "NIFTY")
-banknifty_signal = get_signals(banknifty_data, "BANKNIFTY")
-
-def plot_chart(df, signal, index_name):
+def plot_chart(df, index_name):
     fig = go.Figure()
 
     fig.add_trace(go.Candlestick(
@@ -26,36 +14,41 @@ def plot_chart(df, signal, index_name):
         high=df['high'],
         low=df['low'],
         close=df['close'],
-        name='Price'
+        name='Price',
+        increasing_line_color='green',
+        decreasing_line_color='red'
     ))
 
-    for i in signal['breakout_indices']:
-        fig.add_trace(go.Scatter(
-            x=[df['timestamp'][i]],
-            y=[df['high'][i]],
-            mode='markers',
-            marker=dict(color='yellow', size=12),
-            name='Breakout'
-        ))
+    # Example breakout logic: yellow mark if close > open + 30
+    breakout_mask = df['close'] > df['open'] + 30
+    breakout_points = df[breakout_mask]
 
-    if signal['action'] == 'BUY CE':
-        fig.add_annotation(text=f"✅ BUY CE {signal['strike']} @ ₹{signal['cmp']}",
-                           x=df['timestamp'][signal['breakout_indices'][-1]],
-                           y=df['high'][signal['breakout_indices'][-1]] + 20,
-                           showarrow=True, arrowhead=2, bgcolor="green")
-    elif signal['action'] == 'BUY PE':
-        fig.add_annotation(text=f"✅ BUY PE {signal['strike']} @ ₹{signal['cmp']}",
-                           x=df['timestamp'][signal['breakout_indices'][-1]],
-                           y=df['low'][signal['breakout_indices'][-1]] - 20,
-                           showarrow=True, arrowhead=2, bgcolor="red")
+    fig.add_trace(go.Scatter(
+        x=breakout_points['timestamp'],
+        y=breakout_points['close'],
+        mode='markers',
+        marker=dict(color='yellow', size=8),
+        name='Breakout'
+    ))
 
-    fig.update_layout(title=f"{index_name} Chart", xaxis_rangeslider_visible=False)
+    fig.update_layout(
+        title=f"{index_name} Chart",
+        xaxis_title="Time",
+        yaxis_title="Price",
+        xaxis_rangeslider_visible=False,
+        height=600,
+        margin=dict(l=20, r=20, t=40, b=20)
+    )
+
     return fig
 
-with col1:
-    st.subheader("📈 NIFTY")
-    st.plotly_chart(plot_chart(nifty_data, nifty_signal, "NIFTY"), use_container_width=True)
+# Fetch full data
+nifty_data = fetch_live_chart_data("NIFTY")
+banknifty_data = fetch_live_chart_data("BANKNIFTY")
 
+# Layout: side-by-side charts
+col1, col2 = st.columns(2)
+with col1:
+    st.plotly_chart(plot_chart(nifty_data, "NIFTY"), use_container_width=True)
 with col2:
-    st.subheader("📈 BANKNIFTY")
-    st.plotly_chart(plot_chart(banknifty_data, banknifty_signal, "BANKNIFTY"), use_container_width=True)
+    st.plotly_chart(plot_chart(banknifty_data, "BANKNIFTY"), use_container_width=True)
