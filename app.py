@@ -4,7 +4,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 
 # ─────────────────────────────────────────────
-# 🔄 Dynamic Timestamp
+# ⏱ Dynamic Timestamp
 timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
 # ─────────────────────────────────────────────
@@ -55,22 +55,38 @@ def plot_dual_axis(df, title):
     fig = go.Figure()
 
     # Primary Y-axis: OI
-    fig.add_trace(go.Scatter(x=df['Strike'], y=df['Call_OI'], mode='lines+markers',
-                             name='Call OI', line=dict(color='blue')))
-    fig.add_trace(go.Scatter(x=df['Strike'], y=df['Put_OI'], mode='lines+markers',
-                             name='Put OI', line=dict(color='red')))
+    fig.add_trace(go.Scatter(
+        x=df['Strike'], y=df['Call_OI'],
+        mode='lines+markers', name='Call OI',
+        line=dict(color='blue')
+    ))
+
+    fig.add_trace(go.Scatter(
+        x=df['Strike'], y=df['Put_OI'],
+        mode='lines+markers', name='Put OI',
+        line=dict(color='red')
+    ))
 
     # Secondary Y-axis: Futures
-    fig.add_trace(go.Scatter(x=df['Strike'], y=df['Futures'], mode='lines+markers',
-                             name='Futures', line=dict(color='lightblue'), yaxis='y2'))
+    fig.add_trace(go.Scatter(
+        x=df['Strike'], y=df['Futures'],
+        mode='lines+markers', name='Futures',
+        line=dict(color='lightblue'), yaxis='y2'
+    ))
 
     fig.update_layout(
         title=title,
         xaxis_title='Strike Price',
-        yaxis=dict(title='Open Interest'),
-        yaxis2=dict(title='Futures Price', overlaying='y', side='right'),
+        yaxis=dict(title='Open Interest', side='left'),
+        yaxis2=dict(
+            title='Futures Price',
+            overlaying='y',
+            side='right',
+            showgrid=False
+        ),
         legend=dict(x=0.01, y=0.99),
-        margin=dict(l=40, r=40, t=40, b=40)
+        margin=dict(l=40, r=40, t=40, b=40),
+        height=400
     )
     return fig
 
