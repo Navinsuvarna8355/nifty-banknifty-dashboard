@@ -1,53 +1,59 @@
 import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
+import requests
+import json
 from datetime import datetime
 
 # ─────────────────────────────────────────────
-# 🔄 Replace this with your actual NSE scraper
-def fetch_nse_data(index_name):
-    # Simulated data — replace with real scraper output
-    if index_name == "NIFTY":
-        df = pd.DataFrame({
-            'Strike': [24900, 25000, 25100, 25200, 25300],
-            'Call_OI': [80000, 100000, 120000, 140000, 160000],
-            'Put_OI': [60000, 62000, 61000, 61500, 61800],
-            'Futures': [25100] * 5  # Replace with live Futures price
-        })
-        strategy = {
-            "Live Price": "₹25119.85",
-            "Suggested Option": "25100 CE",
-            "Trend": "BULLISH",
-            "Signal": "BUY",
-            "Strategy": "3 EMA Crossover + PCR (option-chain)",
-            "Confidence": "90%",
-            "PCR (used)": "1.14",
-            "PCR total": "1.33",
-            "PCR near": "1.14",
-            "Expiry": "21-Aug-2025"
-        }
-    else:
-        df = pd.DataFrame({
-            'Strike': [55800, 55900, 56000, 56100, 56200],
-            'Call_OI': [120000, 150000, 180000, 200000, 220000],
-            'Put_OI': [100000, 102000, 101500, 101800, 102200],
-            'Futures': [56000] * 5  # Replace with live Futures price
-        })
-        strategy = {
-            "Live Price": "₹55902.35",
-            "Suggested Option": "—",
-            "Trend": "BEARISH",
-            "Signal": "SIDEWAYS",
-            "Strategy": "3 EMA Crossover + PCR (option-chain)",
-            "Confidence": "90%",
-            "PCR (used)": "0.84",
-            "PCR total": "0.76",
-            "PCR near": "0.84",
-            "Expiry": "28-Aug-2025"
-        }
+# 🔐 NSE Headers
+headers = {
+    "User-Agent": "Mozilla/5.0",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept-Encoding": "gzip, deflate, br",
+    "Connection": "keep-alive"
+}
 
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    return df, strategy, timestamp
+# ─────────────────────────────────────────────
+# 🔄 NSE Option Chain Scraper
+def fetch_option_chain(index_name):
+    url_map = {
+        "NIFTY": "https://www.nseindia.com/api/option-chain-indices?symbol=NIFTY",
+        "BANKNIFTY": "https://www.nseindia.com/api/option-chain-indices?symbol=BANKNIFTY"
+    }
+    url = url_map[index_name]
+
+    session = requests.Session()
+    session.get("https://www.nseindia.com/option-chain", headers=headers)
+    response = session.get(url, headers=headers)
+    data = json.loads(response.text)
+
+    expiry_dates = data["records"]["expiryDates"]
+    current_expiry = expiry_dates[0]
+
+    strikes, call_oi, put_oi = [], [], []
+
+    for item in data['records']['data']:
+        if item["expiryDate"] == current_expiry:
+            strike = item["strikePrice"]
+            ce_oi = item.get("CE", {}).get("openInterest", 0)
+            pe_oi = item.get("PE", {}).get("openInterest", 0)
+
+            strikes.append(strike)
+            call_oi.append(ce_oi)
+            put_oi.append(pe_oi)
+
+    df = pd.DataFrame({
+        "Strike": strikes,
+        "Call_OI": call_oi,
+        "Put_OI": put_oi
+    })
+
+    # Estimate Futures price as midpoint of strikes (placeholder)
+    fut_price = round(sum(strikes) / len(strikes), 2)
+    df["Futures"] = [fut_price] * len(df)
+
+    return df, current_expiry, fut_price
 
 # ─────────────────────────────────────────────
 # 📈 Dual Y-Axis Plotly Chart
@@ -74,36 +80,41 @@ def plot_dual_axis(df, title):
 
 # ─────────────────────────────────────────────
 # 📋 Strategy Card Renderer
-def render_strategy_card(title, data, timestamp):
+def render_strategy_card(title, live_price, expiry, pcr_used, timestamp):
     st.subheader(title)
-    st.markdown(f"**Live Price:** {data['Live Price']}")
-    st.markdown(f"**Suggested Option:** {data['Suggested Option']}")
-    st.markdown(f"**Trend:** {data['Trend']}")
-    st.markdown(f"**Signal:** {data['Signal']}")
-    st.markdown(f"**Strategy:** {data['Strategy']}")
-    st.markdown(f"**Confidence:** {data['Confidence']}")
-    st.markdown(f"**PCR (used):** {data['PCR (used)']}")
-    st.markdown(f"**PCR total:** {data['PCR total']}")
-    st.markdown(f"**PCR near:** {data['PCR near']}")
-    st.markdown(f"**Expiry:** {data['Expiry']}")
+    st.markdown(f"**Live Price:** ₹{live_price}")
+    st.markdown(f"**Suggested Option:** —")
+    st.markdown(f"**Trend:** —")
+    st.markdown(f"**Signal:** —")
+    st.markdown(f"**Strategy:** 3 EMA Crossover + PCR (option-chain)")
+    st.markdown(f"**Confidence:** 90%")
+    st.markdown(f"**PCR (used):** {pcr_used}")
+    st.markdown(f"**PCR total:** —")
+    st.markdown(f"**PCR near:** —")
+    st.markdown(f"**Expiry:** {expiry}")
     st.caption(f"Last updated: {timestamp}")
 
 # ─────────────────────────────────────────────
 # 🧠 Dashboard Layout
-st.set_page_config(page_title="NIFTY/BANKNIFTY Dashboard", layout="wide")
+st.set_page_config(page_title="NSE Strategy Dashboard", layout="wide")
 st.title("📌 NIFTY & BANKNIFTY Strategy + OI Dashboard")
 
 # Fetch live data
-nifty_df, nifty_strategy, nifty_time = fetch_nse_data("NIFTY")
-banknifty_df, banknifty_strategy, banknifty_time = fetch_nse_data("BANKNIFTY")
+nifty_df, nifty_expiry, nifty_fut = fetch_option_chain("NIFTY")
+bank_df, bank_expiry, bank_fut = fetch_option_chain("BANKNIFTY")
+timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+# Calculate PCRs
+nifty_pcr_used = round(nifty_df["Put_OI"].sum() / nifty_df["Call_OI"].sum(), 2)
+bank_pcr_used = round(bank_df["Put_OI"].sum() / bank_df["Call_OI"].sum(), 2)
 
 # Strategy Cards
 st.markdown("### 🔍 Strategy Overview")
 col1, col2 = st.columns(2)
 with col1:
-    render_strategy_card("📈 NIFTY Strategy", nifty_strategy, nifty_time)
+    render_strategy_card("📈 NIFTY Strategy", nifty_fut, nifty_expiry, nifty_pcr_used, timestamp)
 with col2:
-    render_strategy_card("📉 BANKNIFTY Strategy", banknifty_strategy, banknifty_time)
+    render_strategy_card("📉 BANKNIFTY Strategy", bank_fut, bank_expiry, bank_pcr_used, timestamp)
 
 # Charts
 st.markdown("### 📊 CE/PE/Futures Line Charts")
@@ -111,4 +122,4 @@ col3, col4 = st.columns(2)
 with col3:
     st.plotly_chart(plot_dual_axis(nifty_df, "NIFTY CE/PE/Futures"), use_container_width=True)
 with col4:
-    st.plotly_chart(plot_dual_axis(banknifty_df, "BANKNIFTY CE/PE/Futures"), use_container_width=True)
+    st.plotly_chart(plot_dual_axis(bank_df, "BANKNIFTY CE/PE/Futures"), use_container_width=True)
