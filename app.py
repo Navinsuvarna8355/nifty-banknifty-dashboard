@@ -1,11 +1,7 @@
 import streamlit as st
 from datetime import datetime, timedelta
-from streamlit_autorefresh import autorefresh
 
-# Auto-refresh every 60 seconds
-autorefresh(interval=60000, key="refresh")
-
-# Sample data (replace with your live fetch logic)
+# Sample data — replace with your live fetch logic
 info_nifty = {
     "Live Price": 25119.85,
     "Suggested Option": "25100 CE",
@@ -34,7 +30,7 @@ info_banknifty = {
     "Timestamp": "2025-08-21 11:12:41"
 }
 
-# Function to format time delta
+# Format time delta for display
 def format_time_delta(ts_str):
     ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
     now = datetime.now()
@@ -47,12 +43,12 @@ def format_time_delta(ts_str):
     else:
         return f"{seconds // 3600} hours ago"
 
-# Function to check staleness
+# Check if data is stale
 def is_stale(ts_str, threshold_minutes=5):
     ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
     return datetime.now() - ts > timedelta(minutes=threshold_minutes)
 
-# Display card
+# Display strategy card
 def display_card(title, info):
     st.subheader(title)
     st.metric("Live Price", f"₹{info['Live Price']}")
@@ -72,9 +68,15 @@ def display_card(title, info):
     if is_stale(info["Timestamp"]):
         st.warning("⚠️ Data may be stale. Consider refreshing or checking source reliability.")
 
-# Layout
+# App layout
+st.set_page_config(page_title="NIFTY & BANKNIFTY Strategy Dashboard", layout="wide")
 st.title("📊 NIFTY & BANKNIFTY Strategy Dashboard")
 
+# Manual refresh
+if st.button("🔄 Refresh Now"):
+    st.experimental_rerun()
+
+# Display both cards side by side
 col1, col2 = st.columns(2)
 with col1:
     display_card("📈 NIFTY", info_nifty)
