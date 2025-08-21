@@ -126,17 +126,29 @@ with col_right:
     fut_price = spot_price
 
     line_fig = go.Figure()
+
+    # CE line
     line_fig.add_trace(go.Scatter(
         x=df_chg["Strike"], y=df_chg["CE_ChgOI"],
-        mode="lines+markers", name="CE", line=dict(color="green")
+        mode="lines+markers", name="CE",
+        line=dict(color="green", width=2),
+        marker=dict(size=6)
     ))
+
+    # PE line
     line_fig.add_trace(go.Scatter(
         x=df_chg["Strike"], y=df_chg["PE_ChgOI"],
-        mode="lines+markers", name="PE", line=dict(color="red")
+        mode="lines+markers", name="PE",
+        line=dict(color="red", width=2),
+        marker=dict(size=6)
     ))
+
+    # Futures dotted line (right axis)
     line_fig.add_trace(go.Scatter(
         x=df_chg["Strike"], y=[fut_price]*len(df_chg),
-        mode="lines", name="Future", line=dict(color="gray", dash="dot"),
+        mode="lines", name="Future",
+        line=dict(color="gray", dash="dot", width=1),
+        opacity=0.6,
         yaxis="y2"
     ))
 
@@ -149,7 +161,7 @@ with col_right:
             title="Future Price",
             overlaying="y",
             side="right",
-            range=[fut_price - 50, fut_price + 50],
+            range=[fut_price - 100, fut_price + 100],
             showgrid=False
         ),
         shapes=[dict(
@@ -166,7 +178,10 @@ with col_right:
             xanchor="left"
         )],
         legend=dict(x=0.01, y=0.99),
-        height=500,
+        height=550,
         margin=dict(l=50, r=50, t=50, b=50)
     )
+
     st.plotly_chart(line_fig, use_container_width=True)
+
+
