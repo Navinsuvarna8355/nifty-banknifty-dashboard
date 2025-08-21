@@ -52,7 +52,6 @@ def extract_oi_change(df):
 
 df_chg = extract_oi_change(df_raw)
 
-# ------------------ Validate Data ------------------
 if "Strike" in df_chg.columns and not df_chg.empty:
     df_chg = df_chg.dropna().sort_values("Strike")
 else:
@@ -99,8 +98,7 @@ col4.metric("Strategy", strategy)
 
 # ------------------ CHARTS SIDE BY SIDE ------------------
 st.subheader("📈 Open Interest Overview")
-
-col_left, col_right = st.columns([1, 2])  # Wider space for line chart
+col_left, col_right = st.columns([1, 2])
 
 # 📊 Bar Chart: CALL vs PUT OI Change
 with col_left:
@@ -127,28 +125,25 @@ with col_right:
 
     line_fig = go.Figure()
 
-    # CE line
     line_fig.add_trace(go.Scatter(
         x=df_chg["Strike"], y=df_chg["CE_ChgOI"],
         mode="lines+markers", name="CE",
         line=dict(color="green", width=2),
-        marker=dict(size=6)
+        marker=dict(size=5)
     ))
 
-    # PE line
     line_fig.add_trace(go.Scatter(
         x=df_chg["Strike"], y=df_chg["PE_ChgOI"],
         mode="lines+markers", name="PE",
         line=dict(color="red", width=2),
-        marker=dict(size=6)
+        marker=dict(size=5)
     ))
 
-    # Futures dotted line (right axis)
     line_fig.add_trace(go.Scatter(
         x=df_chg["Strike"], y=[fut_price]*len(df_chg),
         mode="lines", name="Future",
         line=dict(color="gray", dash="dot", width=1),
-        opacity=0.6,
+        opacity=0.5,
         yaxis="y2"
     ))
 
@@ -161,7 +156,7 @@ with col_right:
             title="Future Price",
             overlaying="y",
             side="right",
-            range=[fut_price - 100, fut_price + 100],
+            range=[fut_price - 200, fut_price + 200],
             showgrid=False
         ),
         shapes=[dict(
@@ -171,7 +166,7 @@ with col_right:
             line=dict(color="yellow", dash="dash")
         )],
         annotations=[dict(
-            x=spot_price, y=max_oi * 0.1,
+            x=spot_price, y=max_oi * 0.15,
             text=f"Spot @ {spot_price:.2f}",
             showarrow=False,
             font=dict(color="yellow"),
@@ -183,5 +178,3 @@ with col_right:
     )
 
     st.plotly_chart(line_fig, use_container_width=True)
-
-
