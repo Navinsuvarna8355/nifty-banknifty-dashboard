@@ -1,91 +1,86 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import requests
-import time
-from datetime import datetime
+import numpy as np
 import plotly.graph_objects as go
+from datetime import datetime
 
-# ------------------ PAGE CONFIG ------------------
-st.set_page_config(page_title="Clear Change in OI", layout="wide")
+# ---------------- CONFIG ----------------
+st.set_page_config(page_title="Exact Match Change in OI", layout="wide")
 
-# ------------------ SETTINGS ------------------
 SPOT_FALLBACK = {"NIFTY": 25050.55, "BANKNIFTY": 55698.50}
+
 HEADERS = {
     "User-Agent": "Mozilla/5.0",
     "Accept-Language": "en-US,en;q=0.9",
 }
 
-# ------------------ DATA FETCHING ------------------
+# ---------------- DATA ----------------
 @st.cache_data(ttl=60)
 def fetch_futures_price(symbol: str) -> float:
-    """Fetch live futures price from Yahoo Finance."""
     ticker_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK"}
     url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker_map[symbol]}"
     try:
         r = requests.get(url, timeout=5)
-        res = r.json().get("quoteResponse", {}).get("result", [])
-        if res:
-            return float(res[0]["regularMarketPrice"])
+        result = r.json().get("quoteResponse", {}).get("result", [])
+        if result:
+            return float(result[0]["regularMarketPrice"])
     except:
         pass
     return SPOT_FALLBACK[symbol]
 
 @st.cache_data(ttl=60)
-def generate_intraday_3min(symbol: str):
-    """Generate 3-minute interval ΔOI + Futures data. Replace with real feed if available."""
-    times = pd.date_range("09:15", "15:30", freq="3T")
+def generate_intraday(symbol: str):
+    # Replace with your REAL ΔOI feed here
+    times = pd.date_range("09:15", "15:15", freq="3T")
     n = len(times)
-    ce = np.random.randint(-40000, 160000, size=n)   # Simulated CE ΔOI
-    pe = np.random.randint(-40000, 160000, size=n)   # Simulated PE ΔOI
+    ce = np.random.randint(-40000, 160000, size=n)
+    pe = np.random.randint(-40000, 160000, size=n)
     fut = [fetch_futures_price(symbol) + np.random.uniform(-20, 20) for _ in range(n)]
     return pd.DataFrame({
         "Time": times.strftime("%H:%M"),
-        "CE_OI": ce,
-        "PE_OI": pe,
+        "CE_DeltaOI": ce,
+        "PE_DeltaOI": pe,
         "Futures": fut
     })
 
-# ------------------ PLOTLY CHART ------------------
-def make_clear_change_in_oi(df_intraday: pd.DataFrame) -> go.Figure:
-    last_time = df_intraday["Time"].iloc[-1]
-    last_ce   = df_intraday["CE_OI"].iloc[-1]
+# ---------------- PLOT ----------------
+def make_exact_match_chart(df):
+    last_time = df["Time"].iloc[-1]
+    last_ce = df["CE_DeltaOI"].iloc[-1]
 
     fig = go.Figure()
 
-    # CE line – turquoise
+    # CE line — turquoise
     fig.add_trace(go.Scatter(
-        x=df_intraday["Time"],
-        y=df_intraday["CE_OI"],
+        x=df["Time"],
+        y=df["CE_DeltaOI"],
         mode="lines",
         name="CE ΔOI",
-        line=dict(color="turquoise", width=2, shape="spline"),
+        line=dict(color="cyan", width=2, shape="spline"),
         connectgaps=False
     ))
-
-    # Last CE point marker
+    # Last CE marker
     fig.add_trace(go.Scatter(
         x=[last_time],
         y=[last_ce],
         mode="markers",
         name="CE Last",
-        marker=dict(color="turquoise", size=8)
+        marker=dict(color="cyan", size=8)
     ))
-
-    # PE line – red
+    # PE line — red
     fig.add_trace(go.Scatter(
-        x=df_intraday["Time"],
-        y=df_intraday["PE_OI"],
+        x=df["Time"],
+        y=df["PE_DeltaOI"],
         mode="lines",
         name="PE ΔOI",
         line=dict(color="red", width=2, shape="spline"),
         connectgaps=False
     ))
-
-    # Futures line – black dashed (secondary y-axis)
+    # Futures — black dashed
     fig.add_trace(go.Scatter(
-        x=df_intraday["Time"],
-        y=df_intraday["Futures"],
+        x=df["Time"],
+        y=df["Futures"],
         mode="lines",
         name="Futures",
         line=dict(color="black", width=2, dash="dash", shape="spline"),
@@ -93,8 +88,7 @@ def make_clear_change_in_oi(df_intraday: pd.DataFrame) -> go.Figure:
         connectgaps=False
     ))
 
-    # Layout adjustments for clean spacing
-    tick_vals = df_intraday["Time"][:: max(1, len(df_intraday)//8)]
+    tick_vals = df["Time"][:: max(1, len(df)//8)]
     fig.update_layout(
         title="Change in OI",
         xaxis=dict(
@@ -119,16 +113,15 @@ def make_clear_change_in_oi(df_intraday: pd.DataFrame) -> go.Figure:
         margin=dict(l=60, r=60, t=50, b=40),
         template="plotly_white"
     )
-
     return fig
 
-# ------------------ STREAMLIT APP ------------------
+# ---------------- APP ----------------
 def main():
-    st.title("📊 Clear & Spaced Change in OI Chart")
+    st.title("📊 Exact Match — Change in OI")
     symbol = st.selectbox("Select Index", ["NIFTY", "BANKNIFTY"])
-    df_intraday = generate_intraday_3min(symbol)
-    chart = make_clear_change_in_oi(df_intraday)
-    st.plotly_chart(chart, use_container_width=True)
+    df = generate_intraday(symbol)
+    fig = make_exact_match_chart(df)
+    st.plotly_chart(fig, use_container_width=True)
 
 if __name__ == "__main__":
     main()
