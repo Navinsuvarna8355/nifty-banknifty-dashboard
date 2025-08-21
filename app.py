@@ -1,39 +1,28 @@
 import streamlit as st
-import requests
 import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
+from nsepython import nse_optionchain_scrapper
 import random
 
-# Page config
+# Page setup
 st.set_page_config(page_title="OI + Futures Chart", layout="wide")
 st.title("📈 NIFTY/FINNIFTY Open Interest + Futures Price Chart")
 
 # Sidebar inputs
 symbol = st.sidebar.selectbox("Select Symbol", ["NIFTY", "FINNIFTY"])
-url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
 
-# NSE headers
-headers = {
-    "User-Agent": "Mozilla/5.0",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Accept-Encoding": "gzip, deflate, br",
-}
-
-# Fetch data from NSE
+# Fetch data using nsepython
 @st.cache_data(ttl=300)
-def fetch_data():
-    session = requests.Session()
+def fetch_data(symbol):
     try:
-        session.get("https://www.nseindia.com", headers=headers)
-        response = session.get(url, headers=headers)
-        return response.json()
+        return nse_optionchain_scrapper(symbol)
     except Exception:
         return None
 
-data = fetch_data()
+data = fetch_data(symbol)
 
-# Validate data
+# Validate response
 if not data or "records" not in data or "data" not in data["records"]:
     st.error("❌ Failed to fetch valid data from NSE. Please try again later.")
     st.stop()
@@ -42,7 +31,7 @@ if not data or "records" not in data or "data" not in data["records"]:
 expiries = sorted(list(set(item["expiryDate"] for item in data["records"]["data"])))
 selected_expiry = st.sidebar.selectbox("Select Expiry Date", expiries)
 
-# Prepare data for chart
+# Prepare data
 strike_data = []
 for item in data["records"]["data"]:
     if item["expiryDate"] == selected_expiry:
@@ -84,4 +73,4 @@ st.plotly_chart(fig, use_container_width=True)
 
 # Footer
 st.markdown("---")
-st.markdown("Made with ❤️ using Streamlit and Plotly")
+st.markdown("Made with ❤️ using Streamlit, Plotly & NSEPython")
