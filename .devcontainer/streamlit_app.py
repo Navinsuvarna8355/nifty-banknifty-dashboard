@@ -2,16 +2,18 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 from signal_strategy import get_signals
+from nse_option_chain import fetch_live_chart_data
 
 st.set_page_config(layout="wide")
 st.title("📊 NIFTY & BANKNIFTY Signal Dashboard")
 
 col1, col2 = st.columns(2)
 
-# Load your live data (replace with actual API or CSV)
-nifty_data = pd.read_csv("nifty.csv")
-banknifty_data = pd.read_csv("banknifty.csv")
+# Load live chart data
+nifty_data = fetch_live_chart_data("NIFTY")
+banknifty_data = fetch_live_chart_data("BANKNIFTY")
 
+# Get signals
 nifty_signal = get_signals(nifty_data, "NIFTY")
 banknifty_signal = get_signals(banknifty_data, "BANKNIFTY")
 
