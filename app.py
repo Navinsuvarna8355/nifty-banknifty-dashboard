@@ -204,4 +204,7 @@ fig.add_trace(go.Scatter(
     line=dict(color="red", width=2)
 ))
 fig.add_trace(go.Scatter(
-    x=df_intraday["Time"], y=df_intraday["F
+    x=df_intraday["Time"], y=df_intraday["Futures"],
+    mode="lines", name="Futures",
+    line=dict(color="black", dash="dot"),
+    yaxis="
