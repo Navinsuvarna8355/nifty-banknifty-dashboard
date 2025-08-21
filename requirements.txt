@@ -1,6 +1,7 @@
 streamlit
-requests
 pandas
-plotly
-nsepython
+requests
+matplotlib
+
+
 
