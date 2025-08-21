@@ -1,115 +1,112 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+import plotly.graph_objects as go
+from datetime import datetime
 
-# Sample strategy data — replace with live fetch logic
-info_nifty = {
-    "Live Price": 25119.85,
+# ─────────────────────────────────────────────
+# 🔄 Dynamic Timestamp
+timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+# ─────────────────────────────────────────────
+# 📊 Simulated Data (Replace with live fetchers)
+nifty_data = pd.DataFrame({
+    'Strike': [24900, 25000, 25100, 25200, 25300],
+    'Call_OI': [80000, 100000, 120000, 140000, 160000],
+    'Put_OI': [60000, 62000, 61000, 61500, 61800],
+    'Futures': [24950, 25050, 25150, 25250, 25350]
+})
+
+banknifty_data = pd.DataFrame({
+    'Strike': [55800, 55900, 56000, 56100, 56200],
+    'Call_OI': [120000, 150000, 180000, 200000, 220000],
+    'Put_OI': [100000, 102000, 101500, 101800, 102200],
+    'Futures': [55850, 55950, 56050, 56150, 56250]
+})
+
+nifty_strategy = {
+    "Live Price": "₹25119.85",
     "Suggested Option": "25100 CE",
     "Trend": "BULLISH",
     "Signal": "BUY",
     "Strategy": "3 EMA Crossover + PCR (option-chain)",
     "Confidence": "90%",
-    "PCR used": 1.14,
-    "PCR total": 1.33,
-    "PCR near": 1.14,
-    "Expiry": "21-Aug-2025",
-    "Timestamp": "2025-08-21 11:12:41"
+    "PCR (used)": "1.14",
+    "PCR total": "1.33",
+    "PCR near": "1.14",
+    "Expiry": "21-Aug-2025"
 }
 
-info_banknifty = {
-    "Live Price": 55902.35,
+banknifty_strategy = {
+    "Live Price": "₹55902.35",
     "Suggested Option": "—",
     "Trend": "BEARISH",
     "Signal": "SIDEWAYS",
     "Strategy": "3 EMA Crossover + PCR (option-chain)",
     "Confidence": "90%",
-    "PCR used": 0.84,
-    "PCR total": 0.76,
-    "PCR near": 0.84,
-    "Expiry": "28-Aug-2025",
-    "Timestamp": "2025-08-21 11:12:41"
+    "PCR (used)": "0.84",
+    "PCR total": "0.76",
+    "PCR near": "0.84",
+    "Expiry": "28-Aug-2025"
 }
 
-# Sample chart data — replace with live fetch logic
-nifty_df = pd.DataFrame({
-    "Strike": [24900, 25000, 25100, 25200, 25300],
-    "Call OI": [120000, 130000, 140000, 150000, 160000],
-    "Put OI": [80000, 85000, 90000, 95000, 100000],
-    "Futures": [80000, 100000, 120000, 140000, 160000]
-})
+# ─────────────────────────────────────────────
+# 📈 Plotly Dual Y-Axis Chart
+def plot_dual_axis(df, title):
+    fig = go.Figure()
 
-banknifty_df = pd.DataFrame({
-    "Strike": [55800, 55900, 56000, 56100, 56200],
-    "Call OI": [160000, 180000, 200000, 210000, 220000],
-    "Put OI": [160000, 155000, 150000, 145000, 140000],
-    "Futures": [140000, 160000, 180000, 200000, 220000]
-})
+    # Primary Y-axis: OI
+    fig.add_trace(go.Scatter(x=df['Strike'], y=df['Call_OI'], mode='lines+markers',
+                             name='Call OI', line=dict(color='blue')))
+    fig.add_trace(go.Scatter(x=df['Strike'], y=df['Put_OI'], mode='lines+markers',
+                             name='Put OI', line=dict(color='red')))
 
-# Format time delta
-def format_time_delta(ts_str):
-    ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
-    now = datetime.now()
-    delta = now - ts
-    seconds = int(delta.total_seconds())
-    if seconds < 60:
-        return f"{seconds} seconds ago"
-    elif seconds < 3600:
-        return f"{seconds // 60} minutes ago"
-    else:
-        return f"{seconds // 3600} hours ago"
+    # Secondary Y-axis: Futures
+    fig.add_trace(go.Scatter(x=df['Strike'], y=df['Futures'], mode='lines+markers',
+                             name='Futures', line=dict(color='lightblue'), yaxis='y2'))
 
-# Check staleness
-def is_stale(ts_str, threshold_minutes=5):
-    ts = datetime.strptime(ts_str, "%Y-%m-%d %H:%M:%S")
-    return datetime.now() - ts > timedelta(minutes=threshold_minutes)
+    fig.update_layout(
+        title=title,
+        xaxis_title='Strike Price',
+        yaxis=dict(title='Open Interest'),
+        yaxis2=dict(title='Futures Price', overlaying='y', side='right'),
+        legend=dict(x=0.01, y=0.99),
+        margin=dict(l=40, r=40, t=40, b=40)
+    )
+    return fig
 
-# Strategy card
-def display_card(title, info):
+# ─────────────────────────────────────────────
+# 📋 Strategy Card Renderer
+def render_strategy_card(title, data):
     st.subheader(title)
-    st.metric("Live Price", f"₹{info['Live Price']}")
-    st.write(f"**Suggested Option:** {info['Suggested Option']}")
-    st.write(f"**Trend:** {info['Trend']}")
-    st.write(f"**Signal:** {info['Signal']}")
-    st.write(f"**Strategy:** {info['Strategy']}")
-    st.write(f"**Confidence:** {info['Confidence']}")
-    st.write(f"**PCR (used):** {info['PCR used']}")
-    st.write(f"**PCR total:** {info['PCR total']}")
-    st.write(f"**PCR near:** {info['PCR near']}")
-    st.write(f"**Expiry:** {info['Expiry']}")
+    st.markdown(f"**Live Price:** {data['Live Price']}")
+    st.markdown(f"**Suggested Option:** {data['Suggested Option']}")
+    st.markdown(f"**Trend:** {data['Trend']}")
+    st.markdown(f"**Signal:** {data['Signal']}")
+    st.markdown(f"**Strategy:** {data['Strategy']}")
+    st.markdown(f"**Confidence:** {data['Confidence']}")
+    st.markdown(f"**PCR (used):** {data['PCR (used)']}")
+    st.markdown(f"**PCR total:** {data['PCR total']}")
+    st.markdown(f"**PCR near:** {data['PCR near']}")
+    st.markdown(f"**Expiry:** {data['Expiry']}")
+    st.caption(f"Last updated: {timestamp}")
 
-    time_str = format_time_delta(info["Timestamp"])
-    st.write(f"⏱ Last updated {time_str}")
-    if is_stale(info["Timestamp"]):
-        st.warning("⚠️ Data may be stale. Consider refreshing or checking source reliability.")
-
-# Native chart renderer
-def plot_oi_chart_streamlit(df, title):
-    if df.empty:
-        st.warning(f"{title} data missing — chart not rendered.")
-        return
-    st.subheader(title)
-    chart_df = df.set_index("Strike")[["Call OI", "Put OI", "Futures"]]
-    st.line_chart(chart_df)
-
-# Layout
-st.set_page_config(page_title="NIFTY & BANKNIFTY Strategy Dashboard", layout="wide")
-st.title("📊 NIFTY & BANKNIFTY Strategy Dashboard")
-
-if st.button("🔄 Refresh Now"):
-    st.experimental_rerun()
+# ─────────────────────────────────────────────
+# 🧠 Dashboard Layout
+st.set_page_config(page_title="NIFTY/BANKNIFTY Dashboard", layout="wide")
+st.title("📌 NIFTY & BANKNIFTY Strategy + OI Dashboard")
 
 # Strategy Cards
+st.markdown("### 🔍 Strategy Overview")
 col1, col2 = st.columns(2)
 with col1:
-    display_card("📈 NIFTY", info_nifty)
+    render_strategy_card("📈 NIFTY Strategy", nifty_strategy)
 with col2:
-    display_card("📈 BANKNIFTY", info_banknifty)
+    render_strategy_card("📉 BANKNIFTY Strategy", banknifty_strategy)
 
 # Charts
-st.markdown("---")
+st.markdown("### 📊 CE/PE/Futures Line Charts")
 col3, col4 = st.columns(2)
 with col3:
-    plot_oi_chart_streamlit(nifty_df, "NIFTY CE/PE/Futures Line Chart")
+    st.plotly_chart(plot_dual_axis(nifty_data, "NIFTY CE/PE/Futures"), use_container_width=True)
 with col4:
-    plot_oi_chart_streamlit(banknifty_df, "BANKNIFTY CE/PE/Futures Line Chart")
+    st.plotly_chart(plot_dual_axis(banknifty_data, "BANKNIFTY CE/PE/Futures"), use_container_width=True)
