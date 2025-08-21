@@ -1,96 +1,103 @@
-# 📁 app.py
-
 import streamlit as st
-import requests
 import pandas as pd
-import matplotlib.pyplot as plt
+import requests
 
-# 🔧 Fetch option chain data from NSE
-def fetch_option_chain(symbol):
-    url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-        "Accept": "*/*",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.nseindia.com/option-chain",
-        "Connection": "keep-alive",
-    }
+st.set_page_config(page_title="NIFTY/BANKNIFTY Dashboard", layout="wide")
 
-    session = requests.Session()
+# ------------------ CONFIG ------------------
+INDEX = st.selectbox("Choose Index", ["NIFTY", "BANKNIFTY"])
+EXPIRY = "21-Aug-2025" if INDEX == "NIFTY" else "28-Aug-2025"
+SPOT_FALLBACK = 25050.55 if INDEX == "NIFTY" else 55698.50
+
+# ------------------ FETCH OPTION CHAIN ------------------
+@st.cache_data(ttl=60)
+def fetch_option_chain(index):
+    url = f"https://www.nseindia.com/api/option-chain-indices?symbol={index}"
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        session.get("https://www.nseindia.com", headers=headers)
-        response = session.get(url, headers=headers)
+        res = requests.get(url, headers=headers)
+        data = res.json()
+        return pd.DataFrame(data["records"]["data"])
+    except:
+        return pd.DataFrame()
 
-        if response.headers.get("Content-Type", "").startswith("application/json"):
-            return response.json()
-        else:
-            st.error("⚠️ NSE blocked the request. Try again later.")
-            return None
-    except Exception as e:
-        st.error(f"❌ Error: {e}")
-        return None
+df_raw = fetch_option_chain(INDEX)
 
-# 📊 Strategy signal based on Open Interest
-def generate_strategy(option_data):
-    ce_oi = sum(item["CE"]["openInterest"] for item in option_data if "CE" in item)
-    pe_oi = sum(item["PE"]["openInterest"] for item in option_data if "PE" in item)
+# ------------------ SPOT PRICE ------------------
+try:
+    spot_price = df_raw["underlyingValue"].iloc[0]
+except:
+    spot_price = SPOT_FALLBACK
 
-    if ce_oi > pe_oi:
-        return "🔻 Bearish Signal (More Call OI)"
-    elif pe_oi > ce_oi:
-        return "🔺 Bullish Signal (More Put OI)"
+st.metric(f"{INDEX} Spot Price", f"{spot_price:.2f}")
+
+# ------------------ OI TABLE ------------------
+def extract_oi(df):
+    rows = []
+    for row in df.itertuples():
+        ce = getattr(row, "CE", {}) or {}
+        pe = getattr(row, "PE", {}) or {}
+
+        if not isinstance(ce, dict): ce = {}
+        if not isinstance(pe, dict): pe = {}
+
+        strike = ce.get("strikePrice") or pe.get("strikePrice")
+        call_oi = ce.get("openInterest", 0)
+        put_oi = pe.get("openInterest", 0)
+
+        if strike:
+            rows.append({
+                "Strike": strike,
+                "Call OI": call_oi,
+                "Put OI": put_oi
+            })
+    return pd.DataFrame(rows)
+
+df_oi = extract_oi(df_raw)
+df_oi = df_oi.dropna().sort_values("Strike")
+
+# ------------------ PCR CALCULATION ------------------
+def calculate_pcr(df):
+    total_pe = df["Put OI"].sum()
+    total_ce = df["Call OI"].sum()
+    return round(total_pe / total_ce, 2) if total_ce else None
+
+pcr = calculate_pcr(df_oi)
+
+# ------------------ EMA SIGNAL ------------------
+@st.cache_data(ttl=300)
+def fetch_price_history(index):
+    # Replace with real API or CSV later
+    prices = pd.Series([spot_price - i*10 for i in range(30)][::-1])
+    return prices
+
+def get_ema_signal(prices):
+    ema_fast = prices.ewm(span=9).mean()
+    ema_slow = prices.ewm(span=21).mean()
+    return "BULLISH" if ema_fast.iloc[-1] > ema_slow.iloc[-1] else "BEARISH"
+
+prices = fetch_price_history(INDEX)
+ema_signal = get_ema_signal(prices)
+
+# ------------------ STRATEGY ENGINE ------------------
+def get_strategy(pcr, ema):
+    if pcr > 1.2 and ema == "BULLISH":
+        return "BUY CALL"
+    elif pcr < 0.8 and ema == "BEARISH":
+        return "BUY PUT"
     else:
-        return "⚖️ Neutral Market"
+        return "SIDEWAYS"
 
-# 📈 Plot CE vs PE Open Interest
-def plot_oi(option_data):
-    strikes = []
-    ce_oi = []
-    pe_oi = []
+strategy = get_strategy(pcr, ema_signal)
 
-    for item in option_data:
-        if "CE" in item and "PE" in item:
-            strikes.append(item["strikePrice"])
-            ce_oi.append(item["CE"]["openInterest"])
-            pe_oi.append(item["PE"]["openInterest"])
+# ------------------ DISPLAY STRATEGY ------------------
+st.subheader("📊 Strategy Insights")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Expiry", EXPIRY)
+col2.metric("PCR", pcr)
+col3.metric("EMA Signal", ema_signal)
+col4.metric("Strategy", strategy)
 
-    plt.figure(figsize=(10, 5))
-    plt.plot(strikes, ce_oi, label="Call OI", color="red", marker="o")
-    plt.plot(strikes, pe_oi, label="Put OI", color="green", marker="o")
-    plt.xlabel("Strike Price")
-    plt.ylabel("Open Interest")
-    plt.title("CE vs PE Open Interest")
-    plt.legend()
-    st.pyplot(plt)
-
-# 🚀 Streamlit UI
-st.set_page_config(page_title="NIFTY & BANKNIFTY Strategy Signal", layout="wide")
-st.title("📈 NIFTY & BANKNIFTY Strategy Signal Dashboard")
-
-symbol = st.selectbox("Choose Index", ["NIFTY", "BANKNIFTY"])
-data = fetch_option_chain(symbol)
-
-if data and "records" in data and "data" in data["records"]:
-    all_data = data["records"]["data"]
-
-    # 📅 Expiry Date Filter
-    expiry_dates = sorted(set(item["expiryDate"] for item in all_data if "expiryDate" in item))
-    selected_expiry = st.selectbox("Choose Expiry Date", expiry_dates)
-
-    filtered_data = [item for item in all_data if item.get("expiryDate") == selected_expiry]
-
-    # 🧠 Strategy Signal
-    signal = generate_strategy(filtered_data)
-    st.subheader(f"Strategy Signal for {symbol} ({selected_expiry})")
-    st.success(signal)
-
-    # 📊 Chart
-    st.subheader("Open Interest Chart")
-    plot_oi(filtered_data)
-
-    # 📋 Raw Data
-    if st.checkbox("Show Raw Option Chain Data"):
-        df = pd.json_normalize(filtered_data)
-        st.dataframe(df)
-else:
-    st.warning("⚠️ Could not fetch valid data. Please try again later.")
+# ------------------ OI TABLE ------------------
+st.subheader("🔍 Option Chain Open Interest")
+st.dataframe(df_oi, use_container_width=True)
