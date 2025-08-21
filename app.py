@@ -1,9 +1,8 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
 
-# Sample strategy data (replace with live fetch logic)
+# Sample strategy data — replace with live fetch logic
 info_nifty = {
     "Live Price": 25119.85,
     "Suggested Option": "25100 CE",
@@ -32,7 +31,7 @@ info_banknifty = {
     "Timestamp": "2025-08-21 11:12:41"
 }
 
-# Sample chart data (replace with live fetch logic)
+# Sample chart data — replace with live fetch logic
 nifty_df = pd.DataFrame({
     "Strike": [24900, 25000, 25100, 25200, 25300],
     "Call OI": [120000, 130000, 140000, 150000, 160000],
@@ -84,21 +83,14 @@ def display_card(title, info):
     if is_stale(info["Timestamp"]):
         st.warning("⚠️ Data may be stale. Consider refreshing or checking source reliability.")
 
-# Chart renderer
-def plot_oi_chart(df, title):
+# Native chart renderer
+def plot_oi_chart_streamlit(df, title):
     if df.empty:
         st.warning(f"{title} data missing — chart not rendered.")
         return
-
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.plot(df["Strike"], df["Call OI"], label="Call OI", color="blue", marker="o")
-    ax.plot(df["Strike"], df["Put OI"], label="Put OI", color="skyblue", marker="o")
-    ax.plot(df["Strike"], df["Futures"], label="Futures", color="red", marker="o")
-    ax.set_title(title)
-    ax.set_xlabel("Strike Price")
-    ax.set_ylabel("Open Interest")
-    ax.legend()
-    st.pyplot(fig)
+    st.subheader(title)
+    chart_df = df.set_index("Strike")[["Call OI", "Put OI", "Futures"]]
+    st.line_chart(chart_df)
 
 # Layout
 st.set_page_config(page_title="NIFTY & BANKNIFTY Strategy Dashboard", layout="wide")
@@ -118,6 +110,6 @@ with col2:
 st.markdown("---")
 col3, col4 = st.columns(2)
 with col3:
-    plot_oi_chart(nifty_df, "NIFTY CE/PE/Futures Line Chart")
+    plot_oi_chart_streamlit(nifty_df, "NIFTY CE/PE/Futures Line Chart")
 with col4:
-    plot_oi_chart(banknifty_df, "BANKNIFTY CE/PE/Futures Line Chart")
+    plot_oi_chart_streamlit(banknifty_df, "BANKNIFTY CE/PE/Futures Line Chart")
