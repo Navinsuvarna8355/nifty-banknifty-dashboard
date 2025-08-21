@@ -19,7 +19,7 @@ def plot_chart(df, index_name):
         decreasing_line_color='red'
     ))
 
-    # Example breakout logic: yellow mark if close > open + 30
+    # Breakout logic: yellow dot if close > open + 30
     breakout_mask = df['close'] > df['open'] + 30
     breakout_points = df[breakout_mask]
 
@@ -36,8 +36,14 @@ def plot_chart(df, index_name):
         xaxis_title="Time",
         yaxis_title="Price",
         xaxis_rangeslider_visible=False,
-        height=600,
-        margin=dict(l=20, r=20, t=40, b=20)
+        height=700,
+        margin=dict(l=20, r=20, t=40, b=20),
+        xaxis=dict(
+            type='category',
+            tickmode='auto',
+            nticks=30,
+            tickangle=45
+        )
     )
 
     return fig
