@@ -1,122 +1,96 @@
 import streamlit as st
-import requests
-import json
 import pandas as pd
-import altair as alt
+import requests
+from datetime import datetime
+
+st.set_page_config(layout="wide", page_title="NIFTY/BANKNIFTY Dashboard")
 
 # ------------------ CONFIG ------------------
-st.set_page_config(page_title="📊 NIFTY/BANKNIFTY Dashboard", layout="wide")
-st.title("📊 NIFTY & BANKNIFTY Dashboard")
-st.caption("Live Spot Prices + Strategy Insights + Option Chain OI")
+INDEX = st.selectbox("Choose Index", ["NIFTY", "BANKNIFTY"])
+EXPIRY = "21-Aug-2025" if INDEX == "NIFTY" else "28-Aug-2025"
+SPOT_FALLBACK = 25050.55 if INDEX == "NIFTY" else 55698.50
 
-# ------------------ HEADERS ------------------
-HEADERS = {
-    "User-Agent": "Mozilla/5.0",
-    "Accept-Language": "en-US,en;q=0.9",
-    "Referer": "https://www.nseindia.com"
-}
-
-# ------------------ OPTION CHAIN FETCHER ------------------
+# ------------------ FETCH OPTION CHAIN ------------------
 @st.cache_data(ttl=60)
-def fetch_option_chain(symbol="NIFTY"):
-    url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
-    session = requests.Session()
+def fetch_option_chain(index):
+    url = f"https://www.nseindia.com/api/option-chain-indices?symbol={index}"
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        session.get("https://www.nseindia.com/option-chain", headers=HEADERS)
-        response = session.get(url, headers=HEADERS)
-        data = json.loads(response.text)
-        return data
-    except Exception as e:
-        st.error(f"❌ Failed to fetch option chain for {symbol}: {e}")
-        return None
-
-# ------------------ SPOT PRICE FROM OPTION CHAIN ------------------
-def fetch_spot_price(symbol):
-    data = fetch_option_chain(symbol)
-    if data:
-        return data.get("records", {}).get("underlyingValue")
-    return None
-
-# ------------------ OI DATA EXTRACTOR ------------------
-def extract_oi_by_expiry(data):
-    if not data:
+        res = requests.get(url, headers=headers)
+        data = res.json()
+        return pd.DataFrame(data["records"]["data"])
+    except:
         return pd.DataFrame()
 
-    expiry_dates = data.get("records", {}).get("expiryDates", [])
-    if not expiry_dates:
-        return pd.DataFrame()
+df_raw = fetch_option_chain(INDEX)
 
-    current_expiry = expiry_dates[0]
+# ------------------ SPOT PRICE ------------------
+try:
+    spot_price = df_raw["underlyingValue"].iloc[0]
+except:
+    spot_price = SPOT_FALLBACK
+
+st.metric(f"{INDEX} Spot Price", f"{spot_price:.2f}")
+
+# ------------------ OI TABLE ------------------
+def extract_oi(df):
     rows = []
+    for row in df.itertuples():
+        ce = getattr(row, "CE", {})
+        pe = getattr(row, "PE", {})
+        strike = ce.get("strikePrice") or pe.get("strikePrice")
+        rows.append({
+            "Strike": strike,
+            "Call OI": ce.get("openInterest", 0),
+            "Put OI": pe.get("openInterest", 0)
+        })
+    return pd.DataFrame(rows)
 
-    for item in data["records"]["data"]:
-        if item.get("expiryDate") == current_expiry:
-            strike = item.get("strikePrice")
-            ce_oi = item.get("CE", {}).get("openInterest", 0)
-            pe_oi = item.get("PE", {}).get("openInterest", 0)
-            rows.append({"Strike": strike, "Call OI": ce_oi, "Put OI": pe_oi})
+df_oi = extract_oi(df_raw)
+df_oi = df_oi.dropna().sort_values("Strike")
 
-    df = pd.DataFrame(rows).sort_values("Strike")
-    return df
+# ------------------ PCR CALCULATION ------------------
+def calculate_pcr(df):
+    total_pe = df["Put OI"].sum()
+    total_ce = df["Call OI"].sum()
+    return round(total_pe / total_ce, 2) if total_ce else None
 
-# ------------------ STRATEGY LOGIC ------------------
-def generate_strategy(df):
-    if df.empty:
-        return "⚠️ No data to generate strategy."
+pcr = calculate_pcr(df_oi)
 
-    max_ce = df.loc[df["Call OI"].idxmax()]
-    max_pe = df.loc[df["Put OI"].idxmax()]
-    ce_strike = max_ce["Strike"]
-    pe_strike = max_pe["Strike"]
+# ------------------ EMA SIGNAL ------------------
+@st.cache_data(ttl=300)
+def fetch_price_history(index):
+    # Replace with real API or CSV
+    prices = pd.Series([spot_price - i*10 for i in range(30)][::-1])
+    return prices
 
-    if ce_strike > pe_strike:
-        return f"🔺 Bullish Bias: Max CE OI at {ce_strike}, Max PE OI at {pe_strike}. Consider Bull Call Spread."
-    elif pe_strike > ce_strike:
-        return f"🔻 Bearish Bias: Max PE OI at {pe_strike}, Max CE OI at {ce_strike}. Consider Bear Put Spread."
+def get_ema_signal(prices):
+    ema_fast = prices.ewm(span=9).mean()
+    ema_slow = prices.ewm(span=21).mean()
+    return "BULLISH" if ema_fast.iloc[-1] > ema_slow.iloc[-1] else "BEARISH"
+
+prices = fetch_price_history(INDEX)
+ema_signal = get_ema_signal(prices)
+
+# ------------------ STRATEGY ENGINE ------------------
+def get_strategy(pcr, ema):
+    if pcr > 1.2 and ema == "BULLISH":
+        return "BUY CALL"
+    elif pcr < 0.8 and ema == "BEARISH":
+        return "BUY PUT"
     else:
-        return f"⚖️ Neutral Bias: Max OI at same strike {ce_strike}. Consider Iron Condor or Straddle."
+        return "SIDEWAYS"
 
-# ------------------ DISPLAY PRICES + STRATEGY INSIGHTS ------------------
-nifty_price = fetch_spot_price("NIFTY")
-banknifty_price = fetch_spot_price("BANKNIFTY")
+strategy = get_strategy(pcr, ema_signal)
 
-col1, col2 = st.columns(2)
-with col1:
-    st.metric("📈 NIFTY", f"{nifty_price:.2f}" if nifty_price else "N/A")
-    st.markdown("### 📌 NIFTY Strategy Insights")
-    st.write("**Expiry:** 21-Aug-2025")
-    st.write("**PCR:** 1.35")
-    st.write("**EMA Signal:** BEARISH")
-    st.write("**Strategy:** SIDEWAYS 📉")
+# ------------------ DISPLAY STRATEGY ------------------
+st.subheader("📊 Strategy Insights")
+col1, col2, col3, col4 = st.columns(4)
+col1.metric("Expiry", EXPIRY)
+col2.metric("PCR", pcr)
+col3.metric("EMA Signal", ema_signal)
+col4.metric("Strategy", strategy)
 
-with col2:
-    st.metric("🏦 BANKNIFTY", f"{banknifty_price:.2f}" if banknifty_price else "N/A")
-    st.markdown("### 📌 BANKNIFTY Strategy Insights")
-    st.write("**Expiry:** 28-Aug-2025")
-    st.write("**PCR:** 0.71")
-    st.write("**EMA Signal:** BEARISH")
-    st.write("**Strategy:** BUY PE")
-
-# ------------------ DISPLAY OI CHART ------------------
-data = fetch_option_chain("NIFTY")
-df_oi = extract_oi_by_expiry(data)
-
-if df_oi.empty:
-    st.warning("⚠️ No option chain data available.")
-else:
-    st.subheader("🔍 CE vs PE Open Interest")
-    base = alt.Chart(df_oi).encode(x="Strike:O")
-
-    ce_chart = base.mark_bar(color="#1f77b4").encode(y="Call OI:Q")
-    pe_chart = base.mark_bar(color="#ff7f0e").encode(y="Put OI:Q")
-
-    st.altair_chart(ce_chart + pe_chart, use_container_width=True)
-    st.dataframe(df_oi, use_container_width=True)
-
-    # ------------------ DISPLAY STRATEGY ------------------
-    st.subheader("🧠 Strategy Suggestion")
-    strategy_text = generate_strategy(df_oi)
-    st.info(strategy_text)
-
-# ------------------ MANUAL REFRESH ------------------
-st.button("🔄 Refresh Now")
+# ------------------ OI Chart ------------------
+st.subheader("🔍 Option Chain Open Interest")
+st.dataframe(df_oi, use_container_width=True)
