@@ -1,53 +1,29 @@
 import streamlit as st
-import pandas as pd
-import os
-import altair as alt
+from nse_option_chain import fetch_option_chain, compute_oi_pcr_and_underlying
+from signal_strategy import determine_signal
 
-st.set_page_config(layout="wide", page_title="NIFTY & BANKNIFTY Signal Dashboard")
+st.set_page_config(page_title="Strategy Signal", layout="wide")
+st.title("📈 Strategy Signal — NIFTY & BANKNIFTY")
 
-st.title("📊 NIFTY & BANKNIFTY Signal Dashboard")
+symbol = st.selectbox("Choose Symbol", ["NIFTY", "BANKNIFTY"])
+ema_signal = st.selectbox("EMA Signal", ["BUY", "SELL"])
+use_near = st.checkbox("Use Near PCR", value=True)
 
-# Load data with error handling
-def load_data(file_path):
-    if os.path.exists(file_path):
-        return pd.read_csv(file_path)
-    else:
-        st.error(f"❌ File not found: {file_path}")
-        return pd.DataFrame()
+try:
+    data = fetch_option_chain(symbol)
+    info = compute_oi_pcr_and_underlying(data)
 
-nifty_data = load_data("data/nifty.csv")
-banknifty_data = load_data("data/banknifty.csv")
+    pcr = info["pcr_near"] if use_near and info["pcr_near"] else info["pcr_total"]
+    trend = "BULLISH" if pcr and pcr >= 1 else "BEARISH"
+    signal, side = determine_signal(pcr, trend, ema_signal)
+    atm = round(info["underlying"] / 100) * 100
+    suggested_option = f"{atm} {'CE' if side == 'CALL' else 'PE'}" if side else "N/A"
 
-# Check if data is loaded
-if not nifty_data.empty and not banknifty_data.empty:
-    # Convert time column to datetime
-    nifty_data['Time'] = pd.to_datetime(nifty_data['Time'])
-    banknifty_data['Time'] = pd.to_datetime(banknifty_data['Time'])
-
-    # Create charts
-    def create_chart(df, title, color):
-        chart = alt.Chart(df).mark_line(color=color).encode(
-            x='Time:T',
-            y='Price:Q',
-            tooltip=['Time:T', 'Price:Q']
-        ).properties(
-            title=title,
-            width=600,
-            height=400
-        )
-        return chart
-
-    col1, col2 = st.columns(2)
-    with col1:
-        st.altair_chart(create_chart(nifty_data, "NIFTY Chart", "green"), use_container_width=True)
-    with col2:
-        st.altair_chart(create_chart(banknifty_data, "BANKNIFTY Chart", "blue"), use_container_width=True)
-
-    # Optional: Show raw data
-    with st.expander("📄 Show Raw Data"):
-        st.subheader("NIFTY")
-        st.dataframe(nifty_data)
-        st.subheader("BANKNIFTY")
-        st.dataframe(banknifty_data)
-else:
-    st.warning("Please upload both 'nifty.csv' and 'banknifty.csv' in the /data folder.")
+    st.success(f"Signal: {signal}")
+    st.metric("Live Price", f"₹{info['underlying']}")
+    st.metric("PCR Used", pcr)
+    st.metric("Trend", trend)
+    st.metric("Suggested Option", suggested_option)
+    st.write(f"Expiry: {info['expiry']}")
+except Exception as e:
+    st.error(f"Error fetching data: {e}")
