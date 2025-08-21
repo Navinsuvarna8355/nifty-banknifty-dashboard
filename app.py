@@ -2,7 +2,8 @@
 
 import streamlit as st
 import pandas as pd
-import plotly.express as px
+from datetime import datetime
+import plotly.graph_objects as go
 
 # Dummy data — replace with live API
 index_data = {
@@ -42,11 +43,11 @@ index_data = {
     }
 }
 
-# Layout setup
+# Page setup
 st.set_page_config(page_title="Index Strategy Dashboard", layout="wide")
 st.title("📊 NIFTY & BANKNIFTY Strategy Dashboard")
 
-# Render cards side by side
+# Render strategy cards side by side
 col1, col2 = st.columns(2)
 
 def render_card(col, index_name, info):
@@ -62,7 +63,12 @@ def render_card(col, index_name, info):
         st.text(f"PCR total: {info['PCR total']}")
         st.text(f"PCR near: {info['PCR near']}")
         st.text(f"Expiry: {info['Expiry']}")
-        st.text(f"Timestamp: {info['Timestamp']}")
+
+        # Timestamp delta
+        ts = datetime.strptime(info["Timestamp"], "%Y-%m-%d %H:%M:%S")
+        now = datetime.now()
+        delta = (now - ts).seconds
+        st.text(f"⏱ Last updated {delta} seconds ago")
 
 render_card(col1, "NIFTY", index_data["NIFTY"])
 render_card(col2, "BANKNIFTY", index_data["BANKNIFTY"])
@@ -73,25 +79,20 @@ st.markdown("---")
 chart1, chart2 = st.columns(2)
 
 def render_chart(col, index_name, info):
-    df = pd.DataFrame({
-        "Strike": info["Strikes"],
-        "Call OI": info["CE OI"],
-        "Put OI": info["PE OI"],
-        "Futures": info["Futures"]
-    })
+    fig = go.Figure()
 
-    fig = px.line(
-        df,
-        x="Strike",
-        y=["Call OI", "Put OI", "Futures"],
-        title=f"{index_name} CE/PE/Futures Line Chart",
-        markers=True,
-        labels={"value": "Open Interest / Price", "variable": "Type"}
-    )
+    fig.add_trace(go.Scatter(x=info["Strikes"], y=info["CE OI"],
+                             mode="lines+markers", name="Call OI", line=dict(color="blue")))
+    fig.add_trace(go.Scatter(x=info["Strikes"], y=info["PE OI"],
+                             mode="lines+markers", name="Put OI", line=dict(color="lightblue")))
+    fig.add_trace(go.Scatter(x=info["Strikes"], y=info["Futures"],
+                             mode="lines+markers", name="Futures", line=dict(color="red"), yaxis="y2"))
 
     fig.update_layout(
-        xaxis_title="Strike Price",
-        yaxis_title="OI / Futures Price",
+        title=f"{index_name} CE/PE/Futures Line Chart",
+        xaxis=dict(title="Strike Price"),
+        yaxis=dict(title="Open Interest", side="left"),
+        yaxis2=dict(title="Futures Price", overlaying="y", side="right"),
         legend_title="Type",
         template="plotly_white"
     )
