@@ -109,31 +109,53 @@ st.plotly_chart(bar_fig, use_container_width=True)
 # ------------------ LINE CHART: CE/PE/Futures Trend ------------------
 st.subheader("📈 CE/PE/Futures Trend")
 
+max_oi = max(df_chg["CE_ChgOI"].max(), df_chg["PE_ChgOI"].max())
+fut_price = spot_price
+
 line_fig = go.Figure()
-line_fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["CE_ChgOI"], mode="lines+markers", name="CE", line=dict(color="green")))
-line_fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["PE_ChgOI"], mode="lines+markers", name="PE", line=dict(color="red")))
-line_fig.add_trace(go.Scatter(x=df_chg["Strike"], y=[spot_price]*len(df_chg), mode="lines", name="Future", line=dict(color="gray", dash="dot"), yaxis="y2"))
+
+line_fig.add_trace(go.Scatter(
+    x=df_chg["Strike"], y=df_chg["CE_ChgOI"],
+    mode="lines+markers", name="CE", line=dict(color="green")
+))
+line_fig.add_trace(go.Scatter(
+    x=df_chg["Strike"], y=df_chg["PE_ChgOI"],
+    mode="lines+markers", name="PE", line=dict(color="red")
+))
+line_fig.add_trace(go.Scatter(
+    x=df_chg["Strike"], y=[fut_price]*len(df_chg),
+    mode="lines", name="Future", line=dict(color="gray", dash="dot"),
+    yaxis="y2"
+))
 
 line_fig.update_layout(
     template="plotly_dark",
     title="Change in OI vs Strike",
     xaxis_title="Strike Price",
-    yaxis=dict(title="OI Change"),
-    yaxis2=dict(title="Future Price", overlaying="y", side="right", showgrid=False),
+    yaxis=dict(title="OI Change", side="left"),
+    yaxis2=dict(
+        title="Future Price",
+        overlaying="y",
+        side="right",
+        range=[fut_price - 50, fut_price + 50],
+        showgrid=False
+    ),
     shapes=[dict(
         type="line",
         x0=spot_price, x1=spot_price,
-        y0=0, y1=max(df_chg["CE_ChgOI"].max(), df_chg["PE_ChgOI"].max()),
+        y0=0, y1=max_oi,
         line=dict(color="yellow", dash="dash")
     )],
     annotations=[dict(
-        x=spot_price, y=0,
+        x=spot_price, y=max_oi * 0.1,
         text=f"Spot @ {spot_price:.2f}",
-        showarrow=False, font=dict(color="yellow")
+        showarrow=False,
+        font=dict(color="yellow"),
+        xanchor="left"
     )],
     legend=dict(x=0.01, y=0.99),
-    height=450,
-    margin=dict(l=40, r=40, t=40, b=40)
+    height=500,
+    margin=dict(l=50, r=50, t=50, b=50)
 )
 
 st.plotly_chart(line_fig, use_container_width=True)
