@@ -2,18 +2,28 @@ import streamlit as st
 import pandas as pd
 import requests
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 
-# --- Static fallbacks if live spot fails ---
+# --------- CONFIG ---------
+st.set_page_config(layout="wide")
+REFRESH_INTERVAL = 60000  # in ms → 60s
+
+# Static fallbacks if live spot fails
 SPOT_FALLBACKS = {
     "NIFTY": 24500,
     "BANKNIFTY": 52000
 }
 
-st.set_page_config(layout="wide")
+# --------- AUTO‑REFRESH ---------
+st_autorefresh(interval=REFRESH_INTERVAL, key="data_refresh")
 
-# --- Hardened Option Chain Fetch ---
+# --------- OPTION CHAIN FETCHER ---------
 @st.cache_data(ttl=60)
 def fetch_option_chain(symbol):
+    """
+    Fetch NSE option chain for a given symbol, with cookie priming + headers
+    to avoid 401 / empty JSON responses.
+    """
     base_url = "https://www.nseindia.com"
     api_url = f"{base_url}/api/option-chain-indices?symbol={symbol}"
     headers = {
@@ -22,11 +32,12 @@ def fetch_option_chain(symbol):
         "Accept-Encoding": "gzip, deflate, br",
         "Referer": f"{base_url}/option-chain"
     }
+
     session = requests.Session()
     try:
-        # Prime cookies
+        # Step 1: Prime cookies
         session.get(base_url, headers=headers, timeout=5)
-        # Fetch API JSON
+        # Step 2: Fetch API JSON
         res = session.get(api_url, headers=headers, timeout=10)
         if res.status_code != 200:
             st.warning(f"⚠️ NSE returned {res.status_code} for {symbol}")
@@ -39,7 +50,7 @@ def fetch_option_chain(symbol):
         st.error(f"❌ Failed to fetch {symbol} option chain: {e}")
         return pd.DataFrame(), SPOT_FALLBACKS[symbol]
 
-# --- OI Summary Calculation ---
+# --------- CALCULATIONS ---------
 def calculate_oi_summary(df):
     try:
         ce_oi = sum(item["CE"]["openInterest"] for item in df if "CE" in item)
@@ -49,7 +60,6 @@ def calculate_oi_summary(df):
     except Exception:
         return None, None, None
 
-# --- Strategy Decision Placeholder ---
 def decide_strategy(pcr, ema_signal):
     if pcr is None:
         return "—"
@@ -57,14 +67,15 @@ def decide_strategy(pcr, ema_signal):
         return "SIDEWAYS"
     return "BULLISH" if ema_signal == "BULLISH" else "BEARISH"
 
-# --- Dashboard Layout ---
+# --------- UI ---------
 st.title("📊 NIFTY & BANKNIFTY Live Dashboard")
+
 col1, col2 = st.columns(2)
 
 for idx, symbol in enumerate(["NIFTY", "BANKNIFTY"]):
     df, spot = fetch_option_chain(symbol)
     ce_oi, pe_oi, pcr = calculate_oi_summary(df.to_dict("records"))
-    ema_signal = "BULLISH"  # placeholder — hook in your EMA logic
+    ema_signal = "BULLISH"  # hook up your live EMA here
     strategy = decide_strategy(pcr, ema_signal)
 
     with (col1 if idx == 0 else col2):
@@ -75,6 +86,3 @@ for idx, symbol in enumerate(["NIFTY", "BANKNIFTY"]):
         st.markdown(f"**PCR:** {pcr:.2f}" if pcr else "—")
         st.markdown(f"**EMA Signal:** {ema_signal}")
         st.markdown(f"**Strategy:** {strategy}")
-
-# Optional: auto-refresh every 60s
-st_autorefresh = st.experimental_rerun  # adapt if you have your refresh logic
