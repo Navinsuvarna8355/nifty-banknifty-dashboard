@@ -20,10 +20,10 @@ HEADERS = {
 
 # ------------------ AUTO-REFRESH EVERY SECOND ------------------
 
-# This tells Streamlit to rerun the script every 1000 ms
+# rerun the script every 1000 ms
 st_autorefresh(interval=1000, limit=None, key="live_refresh")
 
-# ------------------ FETCH LIVE FUTURES PRICE via requests ------------------
+# ------------------ LIVE FUTURES PRICE via requests ------------------
 
 @st.cache_data(ttl=1)
 def fetch_futures_price(symbol: str) -> float:
@@ -43,36 +43,41 @@ def init_intraday_df():
 if "intraday_df" not in st.session_state:
     st.session_state.intraday_df = init_intraday_df()
 
-# Append a new data point on each rerun
 def append_new_datapoint(symbol: str):
     now = datetime.now().strftime("%H:%M:%S")
-    ce = np.random.randint(20000, 160000)  # or your real CE OI fetch logic
-    pe = np.random.randint(20000, 160000)  # or your real PE OI fetch logic
+    ce = np.random.randint(20000, 160000)       # replace with real CE OI fetch
+    pe = np.random.randint(20000, 160000)       # replace with real PE OI fetch
     fut = fetch_futures_price(symbol)
-    new_row = {"Time": now, "CE_OI": ce, "PE_OI": pe, "Futures": fut}
-    st.session_state.intraday_df = (
-        st.session_state.intraday_df.append(new_row, ignore_index=True)
-        .tail(100)  # keep last 100 points for performance
-    )
+    new_row = pd.DataFrame([{
+        "Time": now,
+        "CE_OI": ce,
+        "PE_OI": pe,
+        "Futures": fut
+    }])
+    # concat instead of append()
+    st.session_state.intraday_df = pd.concat(
+        [st.session_state.intraday_df, new_row],
+        ignore_index=True
+    ).tail(100)  # keep last 100 points
 
 # ------------------ MAIN APP ------------------
 
 def main():
-    st.title("🚀 NIFTY / BANKNIFTY Live Dashboard")
+    st.title("🚀 NIFTY / BANKNIFTY Live Dashboard (1 sec updates)")
 
-    # 1) User selects symbol
+    # 1) Index selector
     symbol = st.selectbox("Choose Index", ["NIFTY", "BANKNIFTY"])
 
-    # 2) Show live futures metric
+    # 2) Display live futures metric
     live_price = fetch_futures_price(symbol)
     st.metric(f"{symbol} Futures (Live)", f"{live_price:.2f}")
 
-    # 3) Build or update intraday DataFrame
+    # 3) Update rolling intraday df
     append_new_datapoint(symbol)
     df_live = st.session_state.intraday_df
 
-    # 4) Plot the live-moving intraday chart
-    st.subheader("⏱️ Intraday Open Interest & Futures (Updates per Second)")
+    # 4) Plot live-moving intraday chart
+    st.subheader("⏱️ Intraday Open Interest & Futures")
     fig = go.Figure()
 
     fig.add_trace(go.Scatter(
