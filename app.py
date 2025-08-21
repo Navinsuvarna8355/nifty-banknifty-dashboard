@@ -39,14 +39,12 @@ def extract_oi_change(df):
         strike = ce.get("strikePrice") or pe.get("strikePrice")
         ce_chg = ce.get("changeinOpenInterest", 0)
         pe_chg = pe.get("changeinOpenInterest", 0)
-        fut = spot_price
 
         if strike:
             rows.append({
                 "Strike": strike,
                 "CE_ChgOI": ce_chg,
-                "PE_ChgOI": pe_chg,
-                "Future": fut
+                "PE_ChgOI": pe_chg
             })
     return pd.DataFrame(rows)
 
@@ -91,32 +89,51 @@ col3.metric("EMA Signal", ema_signal)
 col4.metric("Strategy", strategy)
 
 # ------------------ BAR CHART: Total Change in OI ------------------
-st.subheader("📊 Total Change in OI")
+st.subheader("📊 Total Change in OI (Lakhs)")
 total_ce_chg = df_chg["CE_ChgOI"].sum() / 100000
 total_pe_chg = df_chg["PE_ChgOI"].sum() / 100000
 
-st.plotly_chart(
-    go.Figure(data=[
-        go.Bar(name="CALL", x=["CALL"], y=[total_ce_chg], marker_color="turquoise"),
-        go.Bar(name="PUT", x=["PUT"], y=[total_pe_chg], marker_color="red")
-    ]).update_layout(title="Change in OI (in Lakhs)", yaxis_title="OI Change (L)")
+bar_fig = go.Figure()
+bar_fig.add_trace(go.Bar(x=["CALL"], y=[total_ce_chg], name="CALL", marker_color="green"))
+bar_fig.add_trace(go.Bar(x=["PUT"], y=[total_pe_chg], name="PUT", marker_color="red"))
+bar_fig.update_layout(
+    template="plotly_dark",
+    title="Change in OI (in Lakhs)",
+    yaxis_title="OI Change (L)",
+    xaxis_title="Option Type",
+    height=350,
+    margin=dict(l=40, r=40, t=40, b=40)
 )
+st.plotly_chart(bar_fig, use_container_width=True)
 
-# ------------------ LINE CHART: CE/PE/Future Trend ------------------
+# ------------------ LINE CHART: CE/PE/Futures Trend ------------------
 st.subheader("📈 CE/PE/Futures Trend")
-fig = go.Figure()
-fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["CE_ChgOI"], mode="lines+markers", name="CE", line=dict(color="turquoise")))
-fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["PE_ChgOI"], mode="lines+markers", name="PE", line=dict(color="red")))
-fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["Future"], mode="lines", name="Future", line=dict(color="black", dash="dot"), yaxis="y2"))
 
-fig.update_layout(
+line_fig = go.Figure()
+line_fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["CE_ChgOI"], mode="lines+markers", name="CE", line=dict(color="green")))
+line_fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["PE_ChgOI"], mode="lines+markers", name="PE", line=dict(color="red")))
+line_fig.add_trace(go.Scatter(x=df_chg["Strike"], y=[spot_price]*len(df_chg), mode="lines", name="Future", line=dict(color="gray", dash="dot"), yaxis="y2"))
+
+line_fig.update_layout(
+    template="plotly_dark",
     title="Change in OI vs Strike",
     xaxis_title="Strike Price",
     yaxis=dict(title="OI Change"),
     yaxis2=dict(title="Future Price", overlaying="y", side="right", showgrid=False),
+    shapes=[dict(
+        type="line",
+        x0=spot_price, x1=spot_price,
+        y0=0, y1=max(df_chg["CE_ChgOI"].max(), df_chg["PE_ChgOI"].max()),
+        line=dict(color="yellow", dash="dash")
+    )],
+    annotations=[dict(
+        x=spot_price, y=0,
+        text=f"Spot @ {spot_price:.2f}",
+        showarrow=False, font=dict(color="yellow")
+    )],
     legend=dict(x=0.01, y=0.99),
-    margin=dict(l=40, r=40, t=40, b=40),
-    height=400
+    height=450,
+    margin=dict(l=40, r=40, t=40, b=40)
 )
 
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(line_fig, use_container_width=True)
