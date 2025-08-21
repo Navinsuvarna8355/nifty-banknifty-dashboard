@@ -1,14 +1,14 @@
 import streamlit as st
 import pandas as pd
-import requests
-import plotly.graph_objects as go
 import numpy as np
+import requests
 import time
 from datetime import datetime
+import plotly.graph_objects as go
 
 # ------------------ CONFIG ------------------
 
-st.set_page_config(page_title="3-Min OI & Futures Chart", layout="wide")
+st.set_page_config(page_title="Change in OI Clone", layout="wide")
 
 SPOT_FALLBACK = {"NIFTY": 25050.55, "BANKNIFTY": 55698.50}
 HEADERS = {
@@ -18,46 +18,45 @@ HEADERS = {
     "Referer": "https://www.nseindia.com/option-chain"
 }
 
-# ------------------ FETCH OPTION CHAIN (with retry + fallback) ------------------
+
+# ------------------ DATA FETCHING ------------------
 
 @st.cache_data(ttl=60)
 def fetch_option_chain(symbol: str):
     session = requests.Session()
     for attempt in (1, 2):
         try:
-            # 1) hit homepage to set cookies
+            # Kick off cookies
             session.get("https://www.nseindia.com", headers=HEADERS, timeout=5)
-            # 2) fetch the JSON
             url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
             res = session.get(url, headers=HEADERS, timeout=10)
-            # if status not OK, retry once more
+
             if res.status_code != 200:
                 if attempt == 1:
                     time.sleep(1)
                     continue
                 else:
-                    st.warning(f"⚠️ NSE returned {res.status_code}. Using fallback data.")
+                    st.warning(f"⚠️ NSE returned {res.status_code}. Using fallback.")
                     return pd.DataFrame(), SPOT_FALLBACK[symbol]
+
             data = res.json()
-            # validate structure
             if "records" not in data or "data" not in data["records"]:
                 st.warning("⚠️ Unexpected JSON shape. Using fallback.")
                 return pd.DataFrame(), SPOT_FALLBACK[symbol]
-            records = data["records"]["data"]
-            df = pd.json_normalize(records)
+
+            df = pd.json_normalize(data["records"]["data"])
             df["expiryDate"] = pd.to_datetime(df["expiryDate"], format="%d-%b-%Y")
             spot = data["records"].get("underlyingValue", SPOT_FALLBACK[symbol])
             return df, spot
+
         except Exception as e:
             if attempt == 2:
                 st.warning(f"⚠️ Error fetching option chain: {e}. Using fallback.")
                 return pd.DataFrame(), SPOT_FALLBACK[symbol]
             time.sleep(1)
-    # should never reach here
+
     return pd.DataFrame(), SPOT_FALLBACK[symbol]
 
-
-# ------------------ FETCH LIVE FUTURES PRICE ------------------
 
 @st.cache_data(ttl=60)
 def fetch_futures_price(symbol: str) -> float:
@@ -73,15 +72,15 @@ def fetch_futures_price(symbol: str) -> float:
     return SPOT_FALLBACK[symbol]
 
 
-# ------------------ INTRADAY 3-MIN DATA GENERATOR ------------------
-
 @st.cache_data(ttl=60)
 def generate_intraday_3min(symbol: str):
     times = pd.date_range("09:15", "15:30", freq="3T")
     n = len(times)
-    ce = np.random.randint(20000, 160000, size=n)   # replace with real CE OI
-    pe = np.random.randint(20000, 160000, size=n)   # replace with real PE OI
+    # Here we simulate ΔOI; replace with real ΔOI if you have it
+    ce = np.random.randint(-40000, 160000, size=n)
+    pe = np.random.randint(-40000, 160000, size=n)
     fut = [fetch_futures_price(symbol) for _ in range(n)]
+
     return pd.DataFrame({
         "Time": times.strftime("%H:%M"),
         "CE_OI": ce,
@@ -90,106 +89,93 @@ def generate_intraday_3min(symbol: str):
     })
 
 
-# ------------------ MAIN ------------------
+# ------------------ PLOTLY LAYOUT FUNCTION ------------------
+
+def make_change_in_oi_lookalike(df_intraday: pd.DataFrame) -> go.Figure:
+    last_time = df_intraday["Time"].iloc[-1]
+    last_ce   = df_intraday["CE_OI"].iloc[-1]
+
+    fig = go.Figure()
+
+    # 1) Turquoise CE ΔOI line
+    fig.add_trace(go.Scatter(
+        x=df_intraday["Time"],
+        y=df_intraday["CE_OI"],
+        mode="lines",
+        name="CE ΔOI",
+        line=dict(color="turquoise", width=2)
+    ))
+
+    # 2) Highlight last CE point
+    fig.add_trace(go.Scatter(
+        x=[last_time],
+        y=[last_ce],
+        mode="markers",
+        name="CE Last",
+        marker=dict(color="turquoise", size=8, symbol="circle")
+    ))
+
+    # 3) Red PE ΔOI line
+    fig.add_trace(go.Scatter(
+        x=df_intraday["Time"],
+        y=df_intraday["PE_OI"],
+        mode="lines",
+        name="PE ΔOI",
+        line=dict(color="red", width=2)
+    ))
+
+    # 4) Black dashed Futures line on secondary axis
+    fig.add_trace(go.Scatter(
+        x=df_intraday["Time"],
+        y=df_intraday["Futures"],
+        mode="lines",
+        name="Futures",
+        line=dict(color="black", width=2, dash="dash"),
+        yaxis="y2"
+    ))
+
+    # 5) Configure axes, title, legend, layout
+    tick_vals = df_intraday["Time"][:: max(1, len(df_intraday)//8)]
+    fig.update_layout(
+        title="Change in OI",
+        xaxis=dict(
+            title="Time",
+            tickmode="array",
+            tickvals=tick_vals
+        ),
+        yaxis=dict(
+            title="ΔOI",
+            range=[-40000, 160000]
+        ),
+        yaxis2=dict(
+            title="Futures Price",
+            range=[25100, 25180],
+            overlaying="y",
+            side="right",
+            showgrid=False
+        ),
+        legend=dict(y=0.5, traceorder="reversed"),
+        margin=dict(l=60, r=60, t=50, b=40),
+        template="plotly_white"
+    )
+
+    return fig
+
+
+# ------------------ STREAMLIT APP ------------------
 
 def main():
-    st.title("📊 NIFTY/BANKNIFTY: ΔOI & 3-Min Intraday Chart")
+    st.title("📈 Change in OI Clone Dashboard")
 
-    # 1) Select index
     symbol = st.selectbox("Select Index", ["NIFTY", "BANKNIFTY"])
+    df_chain, spot = fetch_option_chain(symbol)
 
-    # 2) Fetch option chain + spot
-    df, spot = fetch_option_chain(symbol)
-    if df.empty:
-        st.error("No option-chain data. Displaying only intraday chart.")
-    else:
-        # 3) Choose expiry
-        expiries = sorted(df["expiryDate"].dt.date.unique())
-        expiry_date = st.selectbox(
-            "Select Expiry", options=expiries,
-            format_func=lambda d: d.strftime("%d-%m-%Y")
-        )
-        df_exp = df[df["expiryDate"].dt.date == expiry_date]
+    if df_chain.empty:
+        st.error("Option-chain data unavailable. Displaying only intraday ΔOI chart.")
 
-        # 4) Compute total ΔOI in K
-        ce_k = df_exp["CE.changeinOpenInterest"].fillna(0).sum() / 1e3
-        pe_k = df_exp["PE.changeinOpenInterest"].fillna(0).sum() / 1e3
-
-        # 5) Caption
-        now = datetime.now().strftime("%H:%M")
-        st.markdown(f"**As of {now}  Expiry {expiry_date.strftime('%d-%m-%Y')}**")
-
-        # 6) Bar + 3-min line layout
-        left, right = st.columns([1, 2])
-
-        # Left: ΔOI Bar
-        with left:
-            bar_fig = go.Figure([
-                go.Bar(name="CALL ΔOI", x=["CALL"], y=[ce_k], marker_color="green"),
-                go.Bar(name="PUT ΔOI",  x=["PUT"],  y=[pe_k], marker_color="red")
-            ])
-            bar_fig.update_layout(
-                template="plotly_dark",
-                title="Total ΔOI (in K)",
-                yaxis_title="ΔOI (K)",
-                height=350, margin=dict(t=40, b=30)
-            )
-            st.plotly_chart(bar_fig, use_container_width=True)
-
-        # Right: 3-Min Intraday Line
-        df_intraday = generate_intraday_3min(symbol)
-        with right:
-            line_fig = go.Figure()
-            line_fig.add_trace(go.Scatter(
-                x=df_intraday["Time"], y=df_intraday["CE_OI"],
-                mode="lines+markers", name="CE OI",
-                line=dict(color="green"), marker=dict(size=6)
-            ))
-            line_fig.add_trace(go.Scatter(
-                x=df_intraday["Time"], y=df_intraday["PE_OI"],
-                mode="lines+markers", name="PE OI",
-                line=dict(color="red"), marker=dict(size=6)
-            ))
-            line_fig.add_trace(go.Scatter(
-                x=df_intraday["Time"], y=df_intraday["Futures"],
-                mode="lines+markers", name="Futures",
-                line=dict(color="yellow", dash="dash"), marker=dict(size=6),
-                yaxis="y2"
-            ))
-            line_fig.update_layout(
-                template="plotly_dark",
-                title="3-Minute Intraday OI & Futures",
-                xaxis_title="Time (HH:MM)",
-                yaxis=dict(title="Open Interest"),
-                yaxis2=dict(
-                    title="Futures Price",
-                    overlaying="y", side="right", showgrid=False
-                ),
-                height=500, margin=dict(t=50, b=40)
-            )
-            st.plotly_chart(line_fig, use_container_width=True)
-
-    # Always show intraday data even if option chain failed
-    if df.empty:
-        st.subheader("⏱️ Intraday OI & Futures (3-Min Interval)")
-        df_intraday = generate_intraday_3min(symbol)
-        intraday_fig = go.Figure([
-            go.Scatter(x=df_intraday["Time"], y=df_intraday["CE_OI"],
-                       mode="lines+markers", name="CE OI", line=dict(color="green")),
-            go.Scatter(x=df_intraday["Time"], y=df_intraday["PE_OI"],
-                       mode="lines+markers", name="PE OI", line=dict(color="red")),
-            go.Scatter(x=df_intraday["Time"], y=df_intraday["Futures"],
-                       mode="lines+markers", name="Futures", line=dict(color="yellow", dash="dash"),
-                       yaxis="y2")
-        ])
-        intraday_fig.update_layout(
-            template="plotly_dark",
-            xaxis_title="Time (HH:MM)",
-            yaxis=dict(title="OI"),
-            yaxis2=dict(title="Futures", overlaying="y", side="right", showgrid=False),
-            height=450
-        )
-        st.plotly_chart(intraday_fig, use_container_width=True)
+    df_intraday = generate_intraday_3min(symbol)
+    fig = make_change_in_oi_lookalike(df_intraday)
+    st.plotly_chart(fig, use_container_width=True)
 
 
 if __name__ == "__main__":
