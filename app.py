@@ -59,6 +59,7 @@ pcr = calculate_pcr(df_chg)
 
 @st.cache_data(ttl=300)
 def fetch_price_history(sym):
+    # placeholder: generate synthetic history
     return pd.Series([spot_price - i * 10 for i in range(30)][::-1])
 
 def get_ema_signal(prices):
@@ -168,5 +169,48 @@ def generate_intraday_data():
 df_intraday = generate_intraday_data()
 
 fig_intraday = go.Figure()
+
 fig_intraday.add_trace(go.Scatter(
-    x=df_intraday["Time"], y=df
+    x=df_intraday["Time"],
+    y=df_intraday["CE_OI"],
+    mode="lines+markers",
+    name="CE OI",
+    line=dict(color="green", width=2),
+    marker=dict(size=4)
+))
+
+fig_intraday.add_trace(go.Scatter(
+    x=df_intraday["Time"],
+    y=df_intraday["PE_OI"],
+    mode="lines+markers",
+    name="PE OI",
+    line=dict(color="red", width=2),
+    marker=dict(size=4)
+))
+
+fig_intraday.add_trace(go.Scatter(
+    x=df_intraday["Time"],
+    y=df_intraday["Futures"],
+    mode="lines",
+    name="Futures Price",
+    line=dict(color="gray", dash="dash", width=1),
+    yaxis="y2"
+))
+
+fig_intraday.update_layout(
+    template="plotly_dark",
+    title="Intraday OI & Futures",
+    xaxis_title="Time",
+    yaxis=dict(title="Open Interest"),
+    yaxis2=dict(
+        title="Futures Price",
+        overlaying="y",
+        side="right",
+        showgrid=False
+    ),
+    legend=dict(x=0.01, y=0.99),
+    height=450,
+    margin=dict(l=50, r=50, t=40, b=40)
+)
+
+st.plotly_chart(fig_intraday, use_container_width=True)
