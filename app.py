@@ -1,74 +1,64 @@
 # app.py
 
 import streamlit as st
-import pandas as pd
-import plotly.express as px
+from datetime import datetime
 
-# Dummy data (replace with live API or fallback logic)
-index_data = {
+# Static snapshot data — replace with live API later
+data = {
     "NIFTY": {
-        "spot": 25050.55,
-        "futures": 25085.20,
-        "expiry": "21-Aug-2025",
-        "pcr": 1.33,
-        "ema_signal": "BULLISH",
-        "strategy": "BUY CALL",
-        "strikes": [24900, 25000, 25100, 25200, 25300],
-        "oi_ce": [120000, 135000, 150000, 160000, 170000],
-        "oi_pe": [80000, 95000, 110000, 130000, 140000]
+        "Signal": "BUY",
+        "Live Price": 25119.85,
+        "Suggested Option": "25100 CE",
+        "Trend": "BULLISH",
+        "Strategy": "3 EMA Crossover + PCR (option-chain)",
+        "Confidence": 90,
+        "PCR (used)": 1.14,
+        "PCR total": 1.33,
+        "PCR near": 1.14,
+        "Expiry": "21-Aug-2025",
+        "Timestamp": "2025-08-21 11:12:41"
     },
     "BANKNIFTY": {
-        "spot": 55926.60,
-        "futures": 55980.10,
-        "expiry": "21-Aug-2025",
-        "pcr": 0.716,
-        "ema_signal": "NEUTRAL to BULLISH",
-        "strategy": "WATCH or SELL PUT",
-        "strikes": [55800, 55900, 56000, 56100, 56200],
-        "oi_ce": [180000, 190000, 200000, 210000, 220000],
-        "oi_pe": [160000, 155000, 150000, 145000, 140000]
+        "Signal": "SIDEWAYS",
+        "Live Price": 55902.35,
+        "Suggested Option": "—",
+        "Trend": "BEARISH",
+        "Strategy": "3 EMA Crossover + PCR (option-chain)",
+        "Confidence": 90,
+        "PCR (used)": 0.84,
+        "PCR total": 0.76,
+        "PCR near": 0.84,
+        "Expiry": "28-Aug-2025",
+        "Timestamp": "2025-08-21 11:12:41"
     }
 }
 
-# Layout config
-st.set_page_config(page_title="Index Strategy Dashboard", layout="wide")
-st.title("📊 NIFTY & BANKNIFTY Strategy Dashboard")
+# Page setup
+st.set_page_config(page_title="Index Strategy Snapshot", layout="wide")
+st.title("📊 NIFTY & BANKNIFTY Strategy Snapshot")
 
-# Function to render strategy card
-def render_strategy_card(index_name, data):
-    st.subheader(f"📈 {index_name} Strategy Insights")
+# Card renderer
+def render_snapshot(index_name, info):
+    st.subheader(f"📈 {index_name}")
     col1, col2 = st.columns(2)
 
     with col1:
-        st.metric("Spot Price", f"₹{data['spot']:.2f}")
-        st.metric("Futures Price", f"₹{data['futures']:.2f}")
-        st.text(f"Expiry: {data['expiry']}")
-        st.text(f"PCR: {data['pcr']}")
+        st.metric("Live Price", f"₹{info['Live Price']:.2f}")
+        st.text(f"Suggested Option: {info['Suggested Option']}")
+        st.text(f"Trend: {info['Trend']}")
+        st.text(f"Signal: {info['Signal']}")
+        st.text(f"Confidence: {info['Confidence']}%")
 
     with col2:
-        st.text(f"EMA Signal: {data['ema_signal']}")
-        st.text(f"Strategy: {data['strategy']}")
+        st.text(f"Strategy: {info['Strategy']}")
+        st.text(f"PCR (used): {info['PCR (used)']}")
+        st.text(f"PCR total: {info['PCR total']}")
+        st.text(f"PCR near: {info['PCR near']}")
+        st.text(f"Expiry: {info['Expiry']}")
+        st.text(f"Timestamp: {info['Timestamp']}")
 
     st.markdown("---")
 
-# Function to render CE/PE chart
-def render_oi_chart(index_name, data):
-    df = pd.DataFrame({
-        "Strike": data["strikes"],
-        "Call OI": data["oi_ce"],
-        "Put OI": data["oi_pe"]
-    })
-
-    fig = px.line(df, x="Strike", y=["Call OI", "Put OI"],
-                  title=f"{index_name} CE/PE Open Interest",
-                  markers=True)
-    st.plotly_chart(fig, use_container_width=True)
-
-# Render both indices
-for index_name, data in index_data.items():
-    render_strategy_card(index_name, data)
-    render_oi_chart(index_name, data)
-
-# External links (optional)
-st.markdown("🔍 [BANKNIFTY OI Tracker](https://www.niftytrader.in/banknifty-live-oi-tracker)")
-st.markdown("🔍 [NIFTY OI Tracker](https://www.niftytrader.in/nifty-live-oi-tracker)")
+# Render both snapshots
+for index_name, info in data.items():
+    render_snapshot(index_name, info)
