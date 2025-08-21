@@ -16,14 +16,16 @@ def fetch_option_chain(index):
     url = f"https://www.nseindia.com/api/option-chain-indices?symbol={index}"
     headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        res = requests.get(url, headers=headers)
+        res = requests.get(url, headers=headers, timeout=10)
         data = res.json()
-        return pd.DataFrame(data["records"]["data"]), data["records"]["underlyingValue"]
-    except:
+        df = pd.DataFrame(data["records"]["data"])
+        spot = data["records"].get("underlyingValue", SPOT_FALLBACK)
+        return df, spot
+    except Exception as e:
+        st.error(f"❌ Failed to fetch option chain: {e}")
         return pd.DataFrame(), SPOT_FALLBACK
 
 df_raw, spot_price = fetch_option_chain(INDEX)
-
 st.metric(f"{INDEX} Spot Price", f"{spot_price:.2f}")
 
 # ------------------ Extract OI Change ------------------
@@ -48,7 +50,14 @@ def extract_oi_change(df):
             })
     return pd.DataFrame(rows)
 
-df_chg = extract_oi_change(df_raw).dropna().sort_values("Strike")
+df_chg = extract_oi_change(df_raw)
+
+# ------------------ Validate Data ------------------
+if "Strike" in df_chg.columns and not df_chg.empty:
+    df_chg = df_chg.dropna().sort_values("Strike")
+else:
+    st.warning("⚠️ No valid OI data found. Check NSE API or fallback logic.")
+    df_chg = pd.DataFrame(columns=["Strike", "CE_ChgOI", "PE_ChgOI"])
 
 # ------------------ PCR & EMA ------------------
 def calculate_pcr(df):
@@ -109,7 +118,7 @@ st.plotly_chart(bar_fig, use_container_width=True)
 # ------------------ LINE CHART: CE/PE/Futures Trend ------------------
 st.subheader("📈 CE/PE/Futures Trend")
 
-max_oi = max(df_chg["CE_ChgOI"].max(), df_chg["PE_ChgOI"].max())
+max_oi = max(df_chg["CE_ChgOI"].max(), df_chg["PE_ChgOI"].max()) if not df_chg.empty else 1
 fut_price = spot_price
 
 line_fig = go.Figure()
