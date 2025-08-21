@@ -1,114 +1,146 @@
-# app.py
 import streamlit as st
 import pandas as pd
-import numpy as np
 import requests
 import plotly.graph_objects as go
-from datetime import datetime
+import numpy as np
 
-# ---------- PAGE CONFIG ----------
-st.set_page_config(page_title="NIFTY & BANKNIFTY — Change in OI", layout="wide")
+st.set_page_config(page_title="NIFTY & BANKNIFTY Dashboard", layout="wide")
 
-# ---------- SETTINGS ----------
-SPOT_FALLBACK = {"NIFTY": 25050.55, "BANKNIFTY": 55698.50}
-Y1_RANGE = (-40000, 160000)  # ΔOI fixed range
-FUT_PAD   = {"NIFTY": 80, "BANKNIFTY": 200}  # Futures axis padding
+SPOT_FALLBACKS = {"NIFTY": 25050.55, "BANKNIFTY": 55698.50}
+EXPIRIES = {"NIFTY": "21-Aug-2025", "BANKNIFTY": "28-Aug-2025"}
 
-# ---------- LIVE FUTURES FETCH ----------
+# ---------- DATA FETCH ----------
 @st.cache_data(ttl=60)
-def fetch_futures_price(symbol: str) -> float:
-    ticker_map = {"NIFTY": "^NSEI", "BANKNIFTY": "^NSEBANK"}
-    url = f"https://query1.finance.yahoo.com/v7/finance/quote?symbols={ticker_map[symbol]}"
+def fetch_option_chain(symbol):
+    url = f"https://www.nseindia.com/api/option-chain-indices?symbol={symbol}"
+    headers = {"User-Agent": "Mozilla/5.0"}
     try:
-        r = requests.get(url, timeout=5)
-        res = r.json().get("quoteResponse", {}).get("result", [])
-        if res:
-            return float(res[0]["regularMarketPrice"])
-    except Exception:
-        pass
-    return SPOT_FALLBACK[symbol]
+        res = requests.get(url, headers=headers, timeout=10)
+        data = res.json()
+        df = pd.DataFrame(data["records"]["data"])
+        spot = data["records"].get("underlyingValue", SPOT_FALLBACKS[symbol])
+        return df, spot
+    except Exception as e:
+        st.error(f"❌ Failed to fetch {symbol} option chain: {e}")
+        return pd.DataFrame(), SPOT_FALLBACKS[symbol]
 
-# ---------- SAMPLE ΔOI DATA (replace with live feed) ----------
-@st.cache_data(ttl=60)
-def generate_intraday_3min(symbol: str, base_future: float) -> pd.DataFrame:
-    times = pd.date_range("09:15", "15:15", freq="3T")
-    n = len(times)
-    ce_delta = np.random.randint(Y1_RANGE[0], Y1_RANGE[1], size=n)
-    pe_delta = np.random.randint(Y1_RANGE[0], Y1_RANGE[1], size=n)
-    fut = base_future + np.cumsum(np.random.normal(0, 2, size=n))
-    return pd.DataFrame({
-        "Time": times.strftime("%H:%M"),
-        "CE_DeltaOI": ce_delta,
-        "PE_DeltaOI": pe_delta,
-        "Futures": fut
-    })
+def extract_oi_change(df):
+    rows = []
+    for _, row in df.iterrows():
+        ce = row.get("CE", {}) if isinstance(row.get("CE", {}), dict) else {}
+        pe = row.get("PE", {}) if isinstance(row.get("PE", {}), dict) else {}
+        strike = ce.get("strikePrice") or pe.get("strikePrice")
+        ce_chg = ce.get("changeinOpenInterest", 0)
+        pe_chg = pe.get("changeinOpenInterest", 0)
+        if strike is not None:
+            rows.append({"Strike": strike, "CE_ChgOI": ce_chg, "PE_ChgOI": pe_chg})
+    return pd.DataFrame(rows)
 
-# ---------- PLOT BUILDER ----------
-def make_change_in_oi_chart(df: pd.DataFrame, symbol: str, live_fut: float) -> go.Figure:
-    last_time = df["Time"].iloc[-1]
-    last_ce   = df["CE_DeltaOI"].iloc[-1]
-    pad = FUT_PAD[symbol]
-    y2_min, y2_max = live_fut - pad, live_fut + pad
+def calculate_pcr(df):
+    total_pe = df["PE_ChgOI"].sum()
+    total_ce = df["CE_ChgOI"].sum()
+    return round(total_pe / total_ce, 2) if total_ce else None
 
-    fig = go.Figure()
+@st.cache_data(ttl=300)
+def fetch_price_history(sym, spot_price):
+    return pd.Series([spot_price - i * 10 for i in range(30)][::-1])
 
-    # CE line
-    fig.add_trace(go.Scatter(
-        x=df["Time"], y=df["CE_DeltaOI"],
-        mode="lines", name="CE ΔOI",
-        line=dict(color="#00CED1", width=2, shape="spline")
-    ))
-    fig.add_trace(go.Scatter(
-        x=[last_time], y=[last_ce],
-        mode="markers", name="CE Last",
-        marker=dict(color="#00CED1", size=8),
-        showlegend=False
-    ))
-    # PE line
-    fig.add_trace(go.Scatter(
-        x=df["Time"], y=df["PE_DeltaOI"],
-        mode="lines", name="PE ΔOI",
-        line=dict(color="#FF4136", width=2, shape="spline")
-    ))
-    # Futures (secondary axis)
-    fig.add_trace(go.Scatter(
-        x=df["Time"], y=df["Futures"],
-        mode="lines", name="Futures",
-        line=dict(color="#000000", width=2, dash="dash", shape="spline"),
-        yaxis="y2"
-    ))
+def get_ema_signal(prices):
+    ema_fast = prices.ewm(span=9).mean()
+    ema_slow = prices.ewm(span=21).mean()
+    return "BULLISH" if ema_fast.iloc[-1] > ema_slow.iloc[-1] else "BEARISH"
 
-    step = max(1, len(df) // 8)
-    tick_vals = df["Time"][::step]
+def get_strategy(pcr_val, ema_val):
+    if pcr_val and pcr_val > 1.2 and ema_val == "BULLISH":
+        return "BUY CALL"
+    if pcr_val and pcr_val < 0.8 and ema_val == "BEARISH":
+        return "BUY PUT"
+    return "SIDEWAYS"
 
-    fig.update_layout(
-        title="Change in OI",
-        template="plotly_white",
-        xaxis=dict(title="Time", tickmode="array", tickvals=tick_vals),
-        yaxis=dict(title="ΔOI (K)", range=list(Y1_RANGE), zeroline=True, zerolinecolor="rgba(0,0,0,0.25)"),
-        yaxis2=dict(title="Futures Price", range=[y2_min, y2_max], overlaying="y", side="right", showgrid=False),
-        legend=dict(y=0.5, traceorder="reversed"),
-        margin=dict(l=60, r=60, t=50, b=40)
+def generate_intraday_data(spot_price):
+    times = pd.date_range("09:15", "15:30", freq="15min").strftime("%H:%M")
+    ce = np.random.randint(20000, 160000, len(times))
+    pe = np.random.randint(20000, 160000, len(times))
+    fut = np.linspace(spot_price - 50, spot_price + 50, len(times))
+    return pd.DataFrame({"Time": times, "CE_OI": ce, "PE_OI": pe, "Futures": fut})
+
+# ---------- RENDER PANEL ----------
+def render_index(symbol):
+    df_raw, spot_price = fetch_option_chain(symbol)
+    df_chg = extract_oi_change(df_raw)
+    if not df_chg.empty and "Strike" in df_chg.columns:
+        df_chg = df_chg.dropna().sort_values("Strike")
+    else:
+        st.warning(f"⚠️ No valid OI data found for {symbol}.")
+        df_chg = pd.DataFrame(columns=["Strike", "CE_ChgOI", "PE_ChgOI"])
+
+    pcr = calculate_pcr(df_chg)
+    prices = fetch_price_history(symbol, spot_price)
+    ema_signal = get_ema_signal(prices)
+    strategy = get_strategy(pcr, ema_signal)
+
+    # Metrics row
+    st.subheader(f"📊 {symbol} — Strategy Insights")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Expiry", EXPIRIES[symbol])
+    c2.metric("PCR", pcr)
+    c3.metric("EMA Signal", ema_signal)
+    c4.metric("Strategy", strategy)
+
+    # Strike-wise OI
+    st.subheader("📈 Strike-wise OI Overview")
+    col_left, col_right = st.columns([1, 2])
+    with col_left:
+        tot_ce = df_chg["CE_ChgOI"].sum() / 100000
+        tot_pe = df_chg["PE_ChgOI"].sum() / 100000
+        bar_fig = go.Figure()
+        bar_fig.add_trace(go.Bar(x=["CALL"], y=[tot_ce], name="CALL", marker_color="green"))
+        bar_fig.add_trace(go.Bar(x=["PUT"], y=[tot_pe], name="PUT", marker_color="red"))
+        bar_fig.update_layout(
+            template="plotly_dark", title="Change in OI (in Lakhs)",
+            xaxis_title="Option Type", yaxis_title="OI Change (L)", height=400,
+            margin=dict(l=30, r=30, t=40, b=30)
+        )
+        st.plotly_chart(bar_fig, use_container_width=True)
+    with col_right:
+        max_oi = max(df_chg["CE_ChgOI"].max(), df_chg["PE_ChgOI"].max()) if not df_chg.empty else 1
+        strike_fig = go.Figure()
+        strike_fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["CE_ChgOI"],
+                                        mode="lines+markers", name="CE", line=dict(color="green", width=2)))
+        strike_fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["PE_ChgOI"],
+                                        mode="lines+markers", name="PE", line=dict(color="red", width=2)))
+        strike_fig.add_trace(go.Scatter(x=df_chg["Strike"], y=[spot_price]*len(df_chg),
+                                        mode="lines", name="Future", line=dict(color="gray", dash="dot", width=1),
+                                        opacity=0.5, yaxis="y2"))
+        strike_fig.update_layout(
+            template="plotly_dark", title="Change in OI vs Strike",
+            xaxis_title="Strike Price",
+            yaxis=dict(title="OI Change"),
+            yaxis2=dict(title="Future Price", overlaying="y", side="right",
+                        range=[spot_price - 200, spot_price + 200], showgrid=False),
+            shapes=[dict(type="line", x0=spot_price, x1=spot_price, y0=0, y1=max_oi,
+                         line=dict(color="yellow", dash="dash"))],
+            annotations=[dict(x=spot_price, y=max_oi * 0.15, text=f"Spot @ {spot_price:.2f}",
+                              showarrow=False, font=dict(color="yellow"), xanchor="left")],
+            legend=dict(x=0.01, y=0.99), height=550, margin=dict(l=50, r=50, t=50, b=50)
+        )
+        st.plotly_chart(strike_fig, use_container_width=True)
+
+    # Intraday OI Tracker
+    st.subheader("⏱️ Intraday OI Tracker")
+    df_intraday = generate_intraday_data(spot_price)
+    fig_intraday = go.Figure()
+    fig_intraday.add_trace(go.Scatter(x=df_intraday["Time"], y=df_intraday["CE_OI"],
+                                      mode="lines+markers", name="CE OI", line=dict(color="green", width=2)))
+    fig_intraday.add_trace(go.Scatter(x=df_intraday["Time"], y=df_intraday["PE_OI"],
+                                      mode="lines+markers", name="PE OI", line=dict(color="red", width=2)))
+    fig_intraday.add_trace(go.Scatter(x=df_intraday["Time"], y=df_intraday["Futures"],
+                                      mode="lines", name="Futures Price", line=dict(color="gray", dash="dash", width=1),
+                                      yaxis="y2"))
+    fig_intraday.update_layout(
+        template="plotly_dark", title="Intraday OI & Futures", xaxis_title="Time",
+        yaxis=dict(title="Open Interest"),
+        yaxis2=dict(title="Futures Price", overlaying="y", side="right", showgrid=False),
+        legend=dict(x=0.01, y=0.99), height=450, margin=dict(l=50, r=50, t=40, b=40)
     )
-    return fig
-
-# ---------- PANEL RENDER ----------
-def render_panel(symbol: str):
-    live_fut = fetch_futures_price(symbol)
-    df = generate_intraday_3min(symbol, live_fut)
-    fig = make_change_in_oi_chart(df, symbol, live_fut)
-    as_of = datetime.now().strftime("%H:%M")
-    st.markdown(f"**{symbol} — As of {as_of}**")
-    st.plotly_chart(fig, use_container_width=True)
-
-# ---------- MAIN APP ----------
-def main():
-    st.title("📊 Change in OI — NIFTY & BANKNIFTY")
-    col1, col2 = st.columns(2, gap="large")
-    with col1:
-        render_panel("NIFTY")
-    with col2:
-        render_panel("BANKNIFTY")
-
-if __name__ == "__main__":
-    main()
+    st.plotly_chart(fig_intr
