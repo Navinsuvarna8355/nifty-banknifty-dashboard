@@ -1,29 +1,19 @@
 import streamlit as st
 import pandas as pd
 import requests
+import time
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 
-# --------- CONFIG ---------
 st.set_page_config(layout="wide")
-REFRESH_INTERVAL = 60000  # in ms → 60s
+REFRESH_INTERVAL = 60000  # ms
 
-# Static fallbacks if live spot fails
-SPOT_FALLBACKS = {
-    "NIFTY": 24500,
-    "BANKNIFTY": 52000
-}
+SPOT_FALLBACKS = {"NIFTY": 24500, "BANKNIFTY": 52000}
 
-# --------- AUTO‑REFRESH ---------
-st_autorefresh(interval=REFRESH_INTERVAL, key="data_refresh")
+st_autorefresh(interval=REFRESH_INTERVAL, key="refresh")
 
-# --------- OPTION CHAIN FETCHER ---------
 @st.cache_data(ttl=60)
 def fetch_option_chain(symbol):
-    """
-    Fetch NSE option chain for a given symbol, with cookie priming + headers
-    to avoid 401 / empty JSON responses.
-    """
     base_url = "https://www.nseindia.com"
     api_url = f"{base_url}/api/option-chain-indices?symbol={symbol}"
     headers = {
@@ -32,25 +22,25 @@ def fetch_option_chain(symbol):
         "Accept-Encoding": "gzip, deflate, br",
         "Referer": f"{base_url}/option-chain"
     }
-
     session = requests.Session()
     try:
-        # Step 1: Prime cookies
+        # Prime cookies
         session.get(base_url, headers=headers, timeout=5)
-        # Step 2: Fetch API JSON
-        res = session.get(api_url, headers=headers, timeout=10)
-        if res.status_code != 200:
-            st.warning(f"⚠️ NSE returned {res.status_code} for {symbol}")
-            return pd.DataFrame(), SPOT_FALLBACKS[symbol]
-        data = res.json()
-        df = pd.DataFrame(data["records"]["data"])
-        spot = data["records"].get("underlyingValue", SPOT_FALLBACKS[symbol])
-        return df, spot
+        # Retry loop
+        for attempt in range(3):
+            res = session.get(api_url, headers=headers, timeout=10)
+            if res.status_code == 200:
+                data = res.json()
+                df = pd.DataFrame(data["records"]["data"])
+                spot = data["records"].get("underlyingValue", SPOT_FALLBACKS[symbol])
+                return df, spot
+            time.sleep(1.5)  # wait before retry
+        st.warning(f"⚠️ NSE returned {res.status_code} for {symbol} after retries")
+        return pd.DataFrame(), SPOT_FALLBACKS[symbol]
     except Exception as e:
         st.error(f"❌ Failed to fetch {symbol} option chain: {e}")
         return pd.DataFrame(), SPOT_FALLBACKS[symbol]
 
-# --------- CALCULATIONS ---------
 def calculate_oi_summary(df):
     try:
         ce_oi = sum(item["CE"]["openInterest"] for item in df if "CE" in item)
@@ -67,15 +57,13 @@ def decide_strategy(pcr, ema_signal):
         return "SIDEWAYS"
     return "BULLISH" if ema_signal == "BULLISH" else "BEARISH"
 
-# --------- UI ---------
 st.title("📊 NIFTY & BANKNIFTY Live Dashboard")
-
 col1, col2 = st.columns(2)
 
 for idx, symbol in enumerate(["NIFTY", "BANKNIFTY"]):
     df, spot = fetch_option_chain(symbol)
     ce_oi, pe_oi, pcr = calculate_oi_summary(df.to_dict("records"))
-    ema_signal = "BULLISH"  # hook up your live EMA here
+    ema_signal = "BULLISH"  # hook in your live EMA logic
     strategy = decide_strategy(pcr, ema_signal)
 
     with (col1 if idx == 0 else col2):
