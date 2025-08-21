@@ -1,4 +1,4 @@
-from nse_option_chain import get_option_price
+import pandas as pd
 
 def get_signals(df, index_name):
     breakout_indices = []
@@ -16,11 +16,11 @@ def get_signals(df, index_name):
     if pcr > 1 and ema_signal == "BUY":
         action = "BUY CE"
         strike = round(df['close'].iloc[-1] + 150, -2)
-        cmp = get_option_price(index_name, strike, "CE")
+        cmp = 87.2
     elif pcr < 0.7 and ema_signal == "SELL":
         action = "BUY PE"
         strike = round(df['close'].iloc[-1] - 150, -2)
-        cmp = get_option_price(index_name, strike, "PE")
+        cmp = 92.5
 
     return {
         "breakout_indices": breakout_indices,
