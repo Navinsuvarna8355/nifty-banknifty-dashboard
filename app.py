@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import requests
+import plotly.graph_objects as go
 
 st.set_page_config(page_title="NIFTY/BANKNIFTY Dashboard", layout="wide")
 
@@ -17,22 +18,16 @@ def fetch_option_chain(index):
     try:
         res = requests.get(url, headers=headers)
         data = res.json()
-        return pd.DataFrame(data["records"]["data"])
+        return pd.DataFrame(data["records"]["data"]), data["records"]["underlyingValue"]
     except:
-        return pd.DataFrame()
+        return pd.DataFrame(), SPOT_FALLBACK
 
-df_raw = fetch_option_chain(INDEX)
-
-# ------------------ SPOT PRICE ------------------
-try:
-    spot_price = df_raw["underlyingValue"].iloc[0]
-except:
-    spot_price = SPOT_FALLBACK
+df_raw, spot_price = fetch_option_chain(INDEX)
 
 st.metric(f"{INDEX} Spot Price", f"{spot_price:.2f}")
 
-# ------------------ OI TABLE ------------------
-def extract_oi(df):
+# ------------------ Extract OI Change ------------------
+def extract_oi_change(df):
     rows = []
     for row in df.itertuples():
         ce = getattr(row, "CE", {}) or {}
@@ -42,34 +37,32 @@ def extract_oi(df):
         if not isinstance(pe, dict): pe = {}
 
         strike = ce.get("strikePrice") or pe.get("strikePrice")
-        call_oi = ce.get("openInterest", 0)
-        put_oi = pe.get("openInterest", 0)
+        ce_chg = ce.get("changeinOpenInterest", 0)
+        pe_chg = pe.get("changeinOpenInterest", 0)
+        fut = spot_price
 
         if strike:
             rows.append({
                 "Strike": strike,
-                "Call OI": call_oi,
-                "Put OI": put_oi
+                "CE_ChgOI": ce_chg,
+                "PE_ChgOI": pe_chg,
+                "Future": fut
             })
     return pd.DataFrame(rows)
 
-df_oi = extract_oi(df_raw)
-df_oi = df_oi.dropna().sort_values("Strike")
+df_chg = extract_oi_change(df_raw).dropna().sort_values("Strike")
 
-# ------------------ PCR CALCULATION ------------------
+# ------------------ PCR & EMA ------------------
 def calculate_pcr(df):
-    total_pe = df["Put OI"].sum()
-    total_ce = df["Call OI"].sum()
+    total_pe = df["PE_ChgOI"].sum()
+    total_ce = df["CE_ChgOI"].sum()
     return round(total_pe / total_ce, 2) if total_ce else None
 
-pcr = calculate_pcr(df_oi)
+pcr = calculate_pcr(df_chg)
 
-# ------------------ EMA SIGNAL ------------------
 @st.cache_data(ttl=300)
 def fetch_price_history(index):
-    # Replace with real API or CSV later
-    prices = pd.Series([spot_price - i*10 for i in range(30)][::-1])
-    return prices
+    return pd.Series([spot_price - i*10 for i in range(30)][::-1])
 
 def get_ema_signal(prices):
     ema_fast = prices.ewm(span=9).mean()
@@ -79,7 +72,6 @@ def get_ema_signal(prices):
 prices = fetch_price_history(INDEX)
 ema_signal = get_ema_signal(prices)
 
-# ------------------ STRATEGY ENGINE ------------------
 def get_strategy(pcr, ema):
     if pcr > 1.2 and ema == "BULLISH":
         return "BUY CALL"
@@ -98,6 +90,33 @@ col2.metric("PCR", pcr)
 col3.metric("EMA Signal", ema_signal)
 col4.metric("Strategy", strategy)
 
-# ------------------ OI TABLE ------------------
-st.subheader("🔍 Option Chain Open Interest")
-st.dataframe(df_oi, use_container_width=True)
+# ------------------ BAR CHART: Total Change in OI ------------------
+st.subheader("📊 Total Change in OI")
+total_ce_chg = df_chg["CE_ChgOI"].sum() / 100000
+total_pe_chg = df_chg["PE_ChgOI"].sum() / 100000
+
+st.plotly_chart(
+    go.Figure(data=[
+        go.Bar(name="CALL", x=["CALL"], y=[total_ce_chg], marker_color="turquoise"),
+        go.Bar(name="PUT", x=["PUT"], y=[total_pe_chg], marker_color="red")
+    ]).update_layout(title="Change in OI (in Lakhs)", yaxis_title="OI Change (L)")
+)
+
+# ------------------ LINE CHART: CE/PE/Future Trend ------------------
+st.subheader("📈 CE/PE/Futures Trend")
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["CE_ChgOI"], mode="lines+markers", name="CE", line=dict(color="turquoise")))
+fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["PE_ChgOI"], mode="lines+markers", name="PE", line=dict(color="red")))
+fig.add_trace(go.Scatter(x=df_chg["Strike"], y=df_chg["Future"], mode="lines", name="Future", line=dict(color="black", dash="dot"), yaxis="y2"))
+
+fig.update_layout(
+    title="Change in OI vs Strike",
+    xaxis_title="Strike Price",
+    yaxis=dict(title="OI Change"),
+    yaxis2=dict(title="Future Price", overlaying="y", side="right", showgrid=False),
+    legend=dict(x=0.01, y=0.99),
+    margin=dict(l=40, r=40, t=40, b=40),
+    height=400
+)
+
+st.plotly_chart(fig, use_container_width=True)
