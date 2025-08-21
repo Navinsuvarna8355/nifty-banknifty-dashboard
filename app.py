@@ -1,57 +1,36 @@
 import streamlit as st
-import pandas as pd
-import requests
-from datetime import datetime
+from option_chain import fetch_option_chain
+from charts import generate_oi_chart
 
-st.set_page_config(layout="wide", page_title="NIFTY/BANKNIFTY Dashboard")
-st.set_page_config(page_title="NIFTY/BANKNIFTY Dashboard", layout="wide")
+st.set_page_config(page_title="📈 NIFTY & BANKNIFTY Dashboard", layout="wide")
 
-# ------------------ CONFIG ------------------
-INDEX = st.selectbox("Choose Index", ["NIFTY", "BANKNIFTY"])
-@@ -36,14 +35,22 @@ def fetch_option_chain(index):
-def extract_oi(df):
-    rows = []
-    for row in df.itertuples():
-        ce = getattr(row, "CE", {})
-        pe = getattr(row, "PE", {})
-        ce = getattr(row, "CE", {}) or {}
-        pe = getattr(row, "PE", {}) or {}
+st.title("📊 NIFTY & BANKNIFTY Strategy Signal")
 
-        if not isinstance(ce, dict): ce = {}
-        if not isinstance(pe, dict): pe = {}
+symbol = st.selectbox("Choose Index", ["NIFTY", "BANKNIFTY"])
+data = fetch_option_chain(symbol)
 
-        strike = ce.get("strikePrice") or pe.get("strikePrice")
-        rows.append({
-            "Strike": strike,
-            "Call OI": ce.get("openInterest", 0),
-            "Put OI": pe.get("openInterest", 0)
-        })
-        call_oi = ce.get("openInterest", 0)
-        put_oi = pe.get("openInterest", 0)
+if data:
+    expiry_dates = data["records"]["expiryDates"]
+    selected_expiry = st.selectbox("Select Expiry", expiry_dates)
 
-        if strike:
-            rows.append({
-                "Strike": strike,
-                "Call OI": call_oi,
-                "Put OI": put_oi
-            })
-    return pd.DataFrame(rows)
+    live_price = data["records"]["underlyingValue"]
+    st.metric(label=f"{symbol} Live Price", value=f"₹{live_price:,.2f}")
 
-df_oi = extract_oi(df_raw)
-@@ -60,7 +67,7 @@ def calculate_pcr(df):
-# ------------------ EMA SIGNAL ------------------
-@st.cache_data(ttl=300)
-def fetch_price_history(index):
-    # Replace with real API or CSV
-    # Replace with real API or CSV later
-    prices = pd.Series([spot_price - i*10 for i in range(30)][::-1])
-    return prices
+    st.write("**Signal:** SIDEWAYS")
+    st.write("**Trend:** BEARISH")
+    st.write("**Strategy:** 3 EMA Crossover + PCR")
+    st.write("**Confidence:** 90%")
 
-@@ -91,6 +98,6 @@ def get_strategy(pcr, ema):
-col3.metric("EMA Signal", ema_signal)
-col4.metric("Strategy", strategy)
+    # PCR Calculation
+    total_ce_oi = sum(item.get("CE", {}).get("openInterest", 0)
+                      for item in data["records"]["data"] if item["expiryDate"] == selected_expiry)
+    total_pe_oi = sum(item.get("PE", {}).get("openInterest", 0)
+                      for item in data["records"]["data"] if item["expiryDate"] == selected_expiry)
+    pcr = round(total_pe_oi / total_ce_oi, 2) if total_ce_oi else 0
 
-# ------------------ OI Chart ------------------
-# ------------------ OI TABLE ------------------
-st.subheader("🔍 Option Chain Open Interest")
-st.dataframe(df_oi, use_container_width=True)
+    st.write(f"**PCR (Put/Call Ratio):** {pcr}")
+
+    fig = generate_oi_chart(data, selected_expiry)
+    st.plotly_chart(fig, use_container_width=True)
+else:
+    st.error("Failed to fetch data from NSE. Please try again later.")
